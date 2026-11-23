@@ -13,7 +13,7 @@
 | **`respire-resources`** (this repo) | `risense-ai/respire-resources` | Public | OpenSpec specs, OpenAPI 3.1 / Core ABI contracts, HTML prototypes, E2E suites, role playbooks, and orchestration scripts |
 | **`respire`** (open-source Monorepo) | `risense-ai/respire` | Public | Hosts `apps/core`, `apps/runtime`, `apps/cli`, `apps/client2`, and generated `packages/runtime-sdk-*` with isolated manifests and path-filtered CI |
 
-> **Transition Note**: `risense-ai/respire-core` is transitioning from private to open-source under `apps/core/` inside `risense-ai/respire` after a pre-open-source secret/license audit. Historical repositories (`respire-runtime`, `respire-cli`, `respire-client2`) freeze source writes once imported in `003` and act solely as legacy release/NPM distribution mirrors; `risense-ai/respire-back` holds the earlier archived snapshot.
+> **Transition & Licensing Note**: Both `risense-ai/respire-resources` and `risense-ai/respire` (`apps/core`, `apps/runtime`, `apps/cli`, `apps/client2`) are published publicly under **Respire Noncommercial License 1.0** ([LICENSE](LICENSE); commercial terms in [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md)), preserving third-party dependency licenses/notices. Audited Core source is published openly inside `risense-ai/respire/apps/core/`, while legacy `risense-ai/respire-core` remains a private historical archive. Historical repositories (`respire-runtime`, `respire-cli`, `respire-client2`) freeze source writes once imported in `003` and act solely as legacy release/NPM distribution mirrors; `risense-ai/respire-back` holds the earlier archived snapshot.
 
 ---
 

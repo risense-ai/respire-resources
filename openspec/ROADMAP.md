@@ -16,7 +16,7 @@ flowchart LR
     C05 --> C06
 ```
 
-- **Current Status**: Both `risense-ai/respire-resources` and `risense-ai/respire` are live, public, auto-merge enabled, and protected on `main` (`validate-openspec` / `ci-gate` + `verdict-gate`, with automated post-merge `evidence-register`). Org Project #1 ([Respire Transformation (001-006)](https://github.com/orgs/risense-ai/projects/1)), `M1`–`M6` Milestones, 17 labels, and all **20 DAG-linked Issues** are active (`M1` and `M2` approved; `CARD-001` completed). `respire-core` is transitioning to **open-source** under `apps/core/` after its pre-open-source secret/license audit (`CARD-002`).
+- **Current Status**: Both `risense-ai/respire-resources` and `risense-ai/respire` are live, public, published under **Respire Noncommercial License 1.0**, auto-merge enabled, and protected on `main` (`validate-openspec` / `ci-gate` + `verdict-gate`, with automated post-merge `evidence-register`). Org Project #1 ([Respire Transformation (001-006)](https://github.com/orgs/risense-ai/projects/1)), `M1`–`M6` Milestones, 17 labels, and all **20 DAG-linked Issues** are active (`M1` and `M2` approved; `CARD-001` completed). Audited Core source publishes under **Respire Noncommercial License 1.0** inside `risense-ai/respire/apps/core/` while legacy `risense-ai/respire-core` stays a private archive (`CARD-002`).
 
 ---
 

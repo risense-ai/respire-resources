@@ -32,7 +32,7 @@ Prerequisite: install `git-filter-repo` if missing (`pip install --user git-filt
 3. **`respire-client2` -> `apps/client2/`**:
    `git filter-repo --to-subdirectory-filter apps/client2 --invert-paths --path .github/workflows/ --path .worktrees/`
 4. **`respire-core` -> `apps/core/`** (ONLY after `CARD-002` secret/license audit passes):
-   Import pure algorithm crates into `apps/core/` and retire closed-source binary SDK tarball/cache ceremony (`build-core-sdk`, `fetch-core-sdk`, `private-sdk-cache`).
+   Import audited pure algorithm crates into `apps/core/` under **Respire Noncommercial License 1.0** (preserving third-party notices; legacy `risense-ai/respire-core` stays private archive) and retire closed-source binary SDK tarball/cache ceremony (`build-core-sdk`, `fetch-core-sdk`, `private-sdk-cache`).
 
 ## 3. Path-Filtered CI & `ci-gate`
 
@@ -56,6 +56,6 @@ Updaters in `apps/cli` (`runtime_fetch.rs`) and `apps/client2` (`releases.go`) s
 
 ## 5. Risks & Rollback
 
-- **Risk**: Secret or third-party license residue in `respire-core` history prior to open-sourcing.
-- **Mitigation**: Gate `apps/core` import on `CARD-002` full secret/license scan (`gitleaks`/license check) before merging or opening `respire-core` history.
+- **Risk**: Secret or third-party license residue in `respire-core` history prior to publishing `apps/core/`.
+- **Mitigation**: Gate `apps/core` import on `CARD-002` full secret/license scan (`gitleaks`/Respire Noncommercial License 1.0 + third-party notice check) before merging into `risense-ai/respire`; keep legacy `risense-ai/respire-core` private archive so historical CI logs remain private.
 - **Rollback**: Legacy repositories remain frozen and intact throughout migration.

@@ -12,11 +12,12 @@
 
 ---
 
-## 2. Spec-First Gate (No Unapproved Code)
+## 2. Spec-First Gate & Licensing (No Unapproved Code)
 
 1. **No work without an OpenSpec Change**: Every new feature, cross-module refactor, contract change, or UI redesign MUST first exist as an OpenSpec Change package in `respire-resources/openspec/changes/<change-id>/` (`proposal.md`, `design.md`, `tasks.md`, `specs/<domain>/spec.md`).
 2. **Approval before implementation**: Implementer Agents MUST NOT branch or modify product code until the target Change and GitHub Issue carry Maintainer approval (`spec:approved`).
 3. **Contract-First**: `contracts/runtime-api/openapi.yaml` is the single source of truth for Runtime APIs, and `contracts/core-abi/` defines the Core FFI boundary. Hand-written duplicate DTOs across components are forbidden.
+4. **Open-Source License & Legacy Repo Visibility**: `risense-ai/respire-resources` and `risense-ai/respire` (including full audited `apps/core`, `apps/runtime`, `apps/cli`, and `apps/client2`) are published under **Respire Noncommercial License 1.0** ([LICENSE](LICENSE) and [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md)) while preserving all third-party dependency licenses and notices. Legacy `risense-ai/respire-core` remains a **private historical archive**—NEVER flip its GitHub repository visibility to public.
 
 ---
 
