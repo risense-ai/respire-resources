@@ -26,6 +26,7 @@ All documentation, specifications, source code, comments, scripts, workflows, co
 ## Navigation
 
 - **[openspec/AGENT_EXECUTION_GUIDE.md](openspec/AGENT_EXECUTION_GUIDE.md)** — Cold-start 6-step Agent execution protocol & dispatch prompts
+- **[openspec/FEATURE_LIFECYCLE.md](openspec/FEATURE_LIFECYCLE.md)** — Day-2 workflow & recipes for Client2 UI, CLI/TUI, and new Runtime models
 - **[openspec/ROADMAP.md](openspec/ROADMAP.md)** — Master `001`–`006` roadmap, dependency DAG, and 20-card Issue table
 - **[openspec/config.yaml](openspec/config.yaml)** — OpenSpec schema rules and repository metadata
 - **[openspec/specs/](openspec/specs/README.md)** — Canonical archived specifications
@@ -36,10 +37,10 @@ All documentation, specifications, source code, comments, scripts, workflows, co
   4. [004-ci-guardrails-and-code-slimming](openspec/changes/004-ci-guardrails-and-code-slimming/proposal.md) — Anti-regression CI guardrails and 60%+ redundancy elimination across all 4 components
   5. [005-prototypes-and-e2e-acceptance](openspec/changes/005-prototypes-and-e2e-acceptance/proposal.md) — 16 HTML prototypes, black-box E2E suite (with Windows checks), and Client2 PR UI Preview
   6. [006-multi-agent-automation-workflow](openspec/changes/006-multi-agent-automation-workflow/proposal.md) — Six-role Maker-Checker workflow, `respire-process` CLI, Bot Evidence, and `LESSONS.md` audits
-- **[contracts/](contracts/README.md)** — Canonical API & ABI contracts ([OpenAPI 3.1](contracts/runtime-api/openapi.yaml), [Core ABI](contracts/core-abi/README.md))
-- **[prototypes/](prototypes/README.md)** — High-fidelity HTML prototypes, shared design tokens, and Mock Runtime server
-- **[test-cases/](test-cases/README.md)** — Black-box E2E scenarios and Windows regression suite
-- **[process/](process/README.md)** — [Role playbooks](process/roles/README.md), templates, and orchestration scripts
+- **[contracts/](contracts/README.md)** — Canonical API & ABI contracts ([OpenAPI 3.1](contracts/runtime-api/openapi.yaml), [OpenAPI Migration Playbook](contracts/OPENAPI_MIGRATION_PLAYBOOK.md), [Core ABI](contracts/core-abi/README.md))
+- **[prototypes/](prototypes/README.md)** — High-fidelity HTML prototypes, [PR UI Preview Spec](prototypes/UI_PREVIEW_SPEC.md), tokens, and Mock Runtime
+- **[test-cases/](test-cases/README.md)** — Black-box E2E scenarios & [E2E Acceptance Architecture](test-cases/DESIGN.md)
+- **[process/](process/README.md)** — [Role playbooks](process/roles/README.md), [Codex Prompt Pack](process/CODEX_PROMPTS.md), [CI & Quality Gates](process/CI_AND_QUALITY_GATES.md), templates, and scripts
 - **[AGENTS.md](AGENTS.md)** & **[LESSONS.md](LESSONS.md)** — Global AI engineering constitution and lessons ledger
 
 ---

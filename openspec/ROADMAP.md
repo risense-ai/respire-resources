@@ -1,6 +1,6 @@
 # Respire Transformation Master Roadmap (OpenSpec 001–006)
 
-> **Cold-Start Entry**: Any incoming AI Agent MUST read **[AGENT_EXECUTION_GUIDE.md](AGENT_EXECUTION_GUIDE.md)** first, then run `node process/scripts/respire-process.mjs next` to claim the next unblocked task deterministically.
+> **Cold-Start Entry**: Any incoming AI Agent MUST read **[AGENT_EXECUTION_GUIDE.md](AGENT_EXECUTION_GUIDE.md)** and **[FEATURE_LIFECYCLE.md](FEATURE_LIFECYCLE.md)** first, then run `node process/scripts/respire-process.mjs next` to claim the next unblocked task deterministically.
 
 ---
 
@@ -49,7 +49,7 @@ flowchart LR
 | `CARD-010` | `M2` | [respire#7](https://github.com/risense-ai/respire/issues/7) | `respire` | `respire#1,#3` | Implement OpenAPI 3.1 (`/v1/*`+SSE), route parity tests & `<200`-line legacy shim |
 | `CARD-011` | `M2` | [respire#8](https://github.com/risense-ai/respire/issues/8) | `respire` | `respire#4,#5,#7` | Migrate CLI/Client2/MCP to generated SDKs, SSE & Windows HTTP plugin transport |
 | `CARD-012` | `M4` | [respire#9](https://github.com/risense-ai/respire/issues/9) | `respire` | `respire#3,#4,#5` | Expand CI guardrails (600-line ratchet, `.unwrap()` ban, Core I/O ban, Zero-CJK) |
-| `CARD-013` | `M4` | [respire-resources#4](https://github.com/risense-ai/respire-resources/issues/4) | `respire` | `respire#9` | Open-source `apps/core` import & slimming (remove 2,511 dead lines + O(N) `deepen_plan`) |
+| `CARD-013` | `M4` | [respire-resources#4](https://github.com/risense-ai/respire-resources/issues/4) | `respire` | `respire-resources#2, respire#9` | Open-source `apps/core` import & slimming (remove 2,511 dead lines + O(N) `deepen_plan`) |
 | `CARD-014` | `M4` | [respire#10](https://github.com/risense-ai/respire/issues/10) | `respire` | `respire#7,#9` | Slim `apps/runtime` (1x SHA-256, non-blocking switch, retire M3 lock, split god files) |
 | `CARD-015` | `M4` | [respire#11](https://github.com/risense-ai/respire/issues/11) | `respire` | `respire#8,#9` | Slim `apps/cli` (remove stop/`Paused` gates, split giant files `<600` lines) |
 | `CARD-016` | `M4` | [respire#12](https://github.com/risense-ai/respire/issues/12) | `respire` | `respire#8,#9` | Slim `apps/client2` (delete uninstall/NPU/52 host files, drop `go-sqlite3`, merge UI stores) |

@@ -176,7 +176,26 @@ function cmdNext(asJson) {
   const chosen = ready[0].card;
   const targetDir = chosen.meta.target_repo?.split("/")[1] || "respire";
   const slug = chosen.meta.id.toLowerCase();
-  const worktreeCmd = `git -C ${targetDir} worktree add ../.worktrees/${slug}/${targetDir} -b feat/${slug}`;
+  const worktreeCmd =
+    targetDir === "respire-resources"
+      ? `git worktree add ../.worktrees/${slug}/respire-resources -b feat/${slug}`
+      : `git -C ../${targetDir} worktree add ../.worktrees/${slug}/${targetDir} -b feat/${slug}`;
+  const allReady = ready.map((r) => {
+    const tDir = r.card.meta.target_repo?.split("/")[1] || "respire";
+    const s = r.card.meta.id.toLowerCase();
+    return {
+      card_id: r.card.meta.id,
+      ref: r.card.ref,
+      url: r.card.url,
+      title: r.card.title,
+      milestone: r.card.milestone,
+      target_repo: r.card.meta.target_repo,
+      worktree_command:
+        tDir === "respire-resources"
+          ? `git worktree add ../.worktrees/${s}/respire-resources -b feat/${s}`
+          : `git -C ../${tDir} worktree add ../.worktrees/${s}/${tDir} -b feat/${s}`,
+    };
+  });
   const out = {
     status: "ready",
     card_id: chosen.meta.id,
@@ -188,11 +207,13 @@ function cmdNext(asJson) {
     target_repo: chosen.meta.target_repo,
     spec_dir: `openspec/changes/${chosen.meta.change}`,
     claim_command: `node process/scripts/respire-process.mjs claim ${chosen.ref}`,
+    mark_verify_command: `node process/scripts/respire-process.mjs mark-verify ${chosen.meta.id}`,
     worktree_command: worktreeCmd,
     pr_requirements: [
       `Attach Milestone: ${chosen.milestone}`,
       `Include in PR body: Fixes ${chosen.ref}`,
     ],
+    all_ready: allReady,
   };
 
   if (asJson) {
@@ -209,6 +230,13 @@ function cmdNext(asJson) {
     console.log(`  2. Worktree   : ${out.worktree_command}`);
     console.log(`  3. Implement  : Follow ${out.spec_dir}/{design.md,tasks.md,specs/*/spec.md} strictly in English`);
     console.log(`  4. Open PR    : Attach Milestone "${out.milestone}" and include "Fixes ${out.ref}"`);
+    console.log(`  5. Hand off   : Run ${out.mark_verify_command} once PR & CI are ready for Verifier`);
+    if (allReady.length > 1) {
+      console.log(`\nParallel READY queue (${allReady.length} total):`);
+      for (const item of allReady) {
+        console.log(`  - ${item.card_id} | ${item.ref} | ${item.title}`);
+      }
+    }
   }
 }
 
@@ -240,6 +268,29 @@ function cmdClaim(arg) {
     "agent:ready",
   ]);
   console.log(`Claimed ${card.meta.id} (${card.ref}) -> added agent:in-progress`);
+}
+
+function cmdMarkVerify(arg) {
+  if (!arg) {
+    console.error("Usage: respire-process.mjs mark-verify <CARD-XXX | owner/repo#number>");
+    process.exit(1);
+  }
+  const { byRef, byId } = fetchAllCards();
+  const card = byId.get(arg.toUpperCase()) || byRef.get(arg);
+  if (!card) {
+    console.error(`Card not found: ${arg}`);
+    process.exit(1);
+  }
+  if (card.state !== "open") {
+    console.error(`Refusing mark-verify on ${card.meta.id} (${card.ref}): Issue is already closed.`);
+    process.exit(1);
+  }
+  const args = ["issue", "edit", String(card.number), "--repo", card.repo, "--add-label", "agent:verify"];
+  if (card.labels.has("agent:in-progress")) args.push("--remove-label", "agent:in-progress");
+  if (card.labels.has("agent:ready")) args.push("--remove-label", "agent:ready");
+  gh(args);
+  console.log(`Moved ${card.meta.id} (${card.ref}) -> agent:verify (ready for independent Verifier).`);
+  console.log("Optional board refresh: node process/scripts/sync-project-board.mjs --apply");
 }
 
 function cmdApproveMilestone(target) {
@@ -337,6 +388,9 @@ switch (cmd) {
   case "claim":
     cmdClaim(rest[0]);
     break;
+  case "mark-verify":
+    cmdMarkVerify(rest[0]);
+    break;
   case "approve-milestone":
     cmdApproveMilestone(rest[0]);
     break;
@@ -351,6 +405,7 @@ switch (cmd) {
         "  node process/scripts/respire-process.mjs status",
         "  node process/scripts/respire-process.mjs next [--json]",
         "  node process/scripts/respire-process.mjs claim <CARD-XXX | owner/repo#num>",
+        "  node process/scripts/respire-process.mjs mark-verify <CARD-XXX | owner/repo#num>",
         "  node process/scripts/respire-process.mjs approve-milestone <M1|M2|M3|M4|M5|M6|all>",
         "  node process/scripts/respire-process.mjs roles [implementer|verifier|triager|scribe|release-manager] [--one-line]",
       ].join("\n")

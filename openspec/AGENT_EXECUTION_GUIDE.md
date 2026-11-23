@@ -1,6 +1,6 @@
 # Multi-Agent Cold-Start Execution Guide
 
-> **Goal**: Any newly started AI Agent (Codex / Claude Code / Antigravity / Cursor) MUST be able to read this file and drive `001`–`006` execution directly via `process/scripts/respire-process.mjs` with zero prior conversation context.
+> **Goal**: Any newly started AI Agent (Codex / Claude Code / Antigravity / Cursor) MUST be able to read this file and drive `001`–`006` or Day-2 feature work directly via `process/scripts/respire-process.mjs` with zero prior conversation context. See **[FEATURE_LIFECYCLE.md](FEATURE_LIFECYCLE.md)** for post-setup feature recipes and **[../process/CODEX_PROMPTS.md](../process/CODEX_PROMPTS.md)** for copy-paste Codex prompts.
 
 ---
 
@@ -37,13 +37,14 @@ All working clones live under `D:\sources\repos-new\gh\1memory\`:
    - `respire-resources/AGENTS.md` (including the **Strict English-Only** rule outside UI i18n paths), `LESSONS.md`, and `openspec/changes/<change-id>/{proposal,design,tasks,specs/*/spec}.md`.
 4. **Create an isolated Git Worktree (NEVER modify clean `main` clones)**:
    - Run the exact `worktree_command` printed by `next`, e.g.:
-     `git -C respire worktree add ../.worktrees/<card-id>/respire -b feat/<card-id>`
+     `git -C ../respire worktree add ../.worktrees/<card-id>/respire -b feat/<card-id>`
    - NEVER commit feature work into legacy `respire-runtime`, `respire-cli`, `respire-client2` repos.
 5. **Implement atomically & run local gates**:
    - Keep code files **≤ 600 lines**, OpenSpec `.md` files **≤ 400 lines**, Rust non-test code free of `.unwrap()`/`.expect()`, and **zero CJK characters outside UI i18n paths**.
    - Run `node process/scripts/validate-openspec.mjs` (in `respire-resources`) and `node scripts/check-guardrails.mjs` (in `respire`) plus component unit tests.
 6. **Open a Milestone-linked PR & hand off to an independent Verifier**:
    - Attach the **exact GitHub Milestone** from the card, include **`Fixes <owner/repo>#<issue>`** in the PR body, and paste real command outputs.
+   - Run `node process/scripts/respire-process.mjs mark-verify <CARD-XXX>` to move the Issue from `agent:in-progress` to `agent:verify`.
    - Hand off verification to a **fresh read-only Verifier session** (`process/roles/verifier.md`). Never grade your own PR.
 
 ---
