@@ -7,18 +7,19 @@
 - [x] **T01-03** 建立 `process/roles/*`、`process/scripts/validate-openspec.mjs` 与 `.github/workflows/validate.yml`
 - [x] **T01-04** 创建并推送公开仓库 `risense-ai/respire-resources` 至 GitHub
 
-## 阶段二：GitHub 组织治理与仓库模板同步（待 Maintainer 批准 `001` 后执行）
+## 阶段二：GitHub 组织治理与仓库模板同步
 
-- [ ] **T01-05** 确认 `gh` Token 具备 `project` scope（如缺少则提示 Maintainer 授权 `gh auth refresh -s project`），创建组织看板 `Respire Engineering` 并配置状态列（`Backlog / Triage`、`Spec Approved`、`In Progress`、`In Review / Verify`、`Done`）
-- [ ] **T01-06** 为 `risense-ai/respire-resources` 与 `risense-ai/respire` 创建统一 Milestone（`M1-OpenAPI-Migration` 至 `M4-E2E-And-Automation`）及标准标签（`proposed`、`approved`、`guardrail`、`needs-info`、`ui-preview`）
-- [ ] **T01-07** 将 `process/templates/ISSUE_TEMPLATE.md`、`PULL_REQUEST_TEMPLATE.md` 与 `coderabbit.yaml` 同步至 `risense-ai/respire-core`（确认 `risense-ai/respire` 已在初始化时同步）
-- [ ] **T01-08** 在 `risense-ai/respire-resources` 开启 `main` 分支保护（必需检查：`validate-openspec`）；在 `risense-ai/respire` 开启 `main` 分支保护（必需检查：`ci-gate`）
-- [ ] **T01-09** 验收归档：运行 `node process/scripts/validate-openspec.mjs` 并核对分支保护生效后，由 Scribe 将 `specs/governance/spec.md` 合并至 `openspec/specs/governance/spec.md`
+- [ ] **T01-05** 同步组织级 GitHub Project 看板 `Respire Transformation (001-006)`：`process/scripts/sync-project-board.mjs` 已就绪，待 Maintainer 运行 `gh auth refresh -s project,read:project` 后执行 `--apply`（见 `CARD-001`）
+- [x] **T01-06** 为 `risense-ai/respire-resources` 与 `risense-ai/respire` 创建统一 Milestone（`M1`–`M6` 1:1 映射 `001`–`006`）及 17 个标准流程/领域标签，并建立 20 张带 `depends_on` DAG 的编排 Issue
+- [ ] **T01-07** 将 `process/templates/ISSUE_TEMPLATE.md`、`PULL_REQUEST_TEMPLATE.md` 与 `coderabbit.yaml` 同步至 `risense-ai/respire-core`（确认 `risense-ai/respire` 已在初始化时同步，见 `CARD-002`）
+- [x] **T01-08** 在 `risense-ai/respire-resources` 开启 `main` 分支保护（必需检查：`validate-openspec`）；在 `risense-ai/respire` 开启 `main` 分支保护（必需检查：`ci-gate`）
+- [ ] **T01-09** 验收归档：全部阶段二卡片关闭后运行 `node process/scripts/validate-openspec.mjs`，并将 `specs/governance/spec.md` 合并至 `openspec/specs/governance/spec.md`
 
 ## 验收命令
 
 ```sh
 node process/scripts/validate-openspec.mjs
+node process/scripts/respire-process.mjs status
 gh api repos/risense-ai/respire-resources/branches/main/protection --jq '.required_status_checks.contexts'
 gh api repos/risense-ai/respire/branches/main/protection --jq '.required_status_checks.contexts'
 ```
