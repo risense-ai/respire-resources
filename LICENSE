@@ -29,10 +29,9 @@ offer permission for Commercial Purposes or remove these conditions from the
 first-party material supplied under this license. Distribution must itself have
 a Noncommercial Purpose, unless separately authorized in writing.
 
-This license covers all first-party material offered under these terms in
-this repository, including Respire Core (apps/core), Runtime, CLI, Client2,
-and first-party specifications and documentation. Third-party components
-retain their own licenses and notices. You receive no trademark or
+This license covers all first-party software, source code, specifications,
+and documentation offered under these terms in this repository. Third-party
+components retain their own licenses and notices. You receive no trademark or
 endorsement rights.
 
 This license does not revoke any rights already granted for material under a
