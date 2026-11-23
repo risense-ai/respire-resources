@@ -16,7 +16,7 @@ flowchart LR
     C05 --> C06
 ```
 
-- **Current Status**: Both `risense-ai/respire-resources` and `risense-ai/respire` are live, public, published under **Respire Noncommercial License 1.0**, auto-merge enabled, and protected on `main` (`validate-openspec` / `ci-gate` + `verdict-gate`, with automated post-merge `evidence-register`). Org Project #1 ([Respire Transformation (001-006)](https://github.com/orgs/risense-ai/projects/1)), `M1`–`M6` Milestones, 17 labels, and all **20 DAG-linked Issues** are active (`M1` and `M2` approved; `CARD-001` completed). Audited Core source publishes under **Respire Noncommercial License 1.0** inside `risense-ai/respire/apps/core/` while legacy `risense-ai/respire-core` stays a private archive (`CARD-002`).
+- **Current Status**: Both `risense-ai/respire-resources` and `risense-ai/respire` are live, public, published under **Respire Noncommercial License 1.0**, auto-merge enabled, and protected on `main` (`validate-openspec` / `ci-gate` + `verdict-gate`, with automated post-merge `evidence-register`). Org Project #1 ([Respire Transformation (001-006)](https://github.com/orgs/risense-ai/projects/1)), `M1`–`M6` Milestones, and 17 labels are in place. The workflow tracks **20 DAG-linked Issues** (`M1` archived; `M2` approved). The Core pre-publication audit and template sync (`CARD-002`) are complete; any future Core source import into `risense-ai/respire/apps/core/` is separate and follows **Respire Noncommercial License 1.0**, while legacy `risense-ai/respire-core` stays private.
 
 ---
 
@@ -24,7 +24,7 @@ flowchart LR
 
 | Change | Milestone | Core Objective | Status |
 | --- | --- | --- | --- |
-| [001-resources-openspec-foundation](changes/001-resources-openspec-foundation/proposal.md) | `M1` | SSOT repo, Zero-CJK English-only gate, Milestones/Labels, branch protection, Project #1 sync | `approved` (`T01-01`–`T01-06`, `T01-08`, `T01-10` done) |
+| [001-resources-openspec-foundation](changes/archive/2026-11-23-001-resources-openspec-foundation/proposal.md) | `M1` | SSOT repo, Zero-CJK English-only gate, Milestones/Labels, branch protection, Project #1 sync | `archived`; see the [canonical governance spec](specs/governance/spec.md) |
 | [002-runtime-openapi-v1-migration](changes/002-runtime-openapi-v1-migration/proposal.md) | `M2` | Full V1 `openapi.yaml` (REST+SSE), Rust/Go/TS SDKs, legacy JSON-RPC shim, Windows plugin migration | `approved` (`CARD-003` ready) |
 | [003-monorepo-merge-and-release-bridge](changes/003-monorepo-merge-and-release-bridge/proposal.md) | `M3` | Import open-source `core`, `runtime`, filtered `cli`, `client2` into `risense-ai/respire`; path CI + Release Fan-Out | `proposed` (`T03-01` done) |
 | [004-ci-guardrails-and-code-slimming](changes/004-ci-guardrails-and-code-slimming/proposal.md) | `M4` | Hard CI guardrails (deps, Zero-CJK, 600-line ratchet, route parity) + 4-app slimming | `proposed` |
@@ -38,7 +38,7 @@ flowchart LR
 | Card | Milestone | Issue Ref | Target Repo | Depends On | Summary |
 | --- | --- | --- | --- | --- | --- |
 | `CARD-001` | `M1` | [respire-resources#1](https://github.com/risense-ai/respire-resources/issues/1) | `respire-resources` | — | Authorize & sync org GitHub Project #1 (`DONE`) |
-| `CARD-002` | `M1` | [respire-resources#2](https://github.com/risense-ai/respire-resources/issues/2) | `respire-core` | — | Pre-open-source audit of `respire-core` (secrets/license) & sync templates |
+| `CARD-002` | `M1` | [respire-resources#2](https://github.com/risense-ai/respire-resources/issues/2) | `respire-core` | — | Pre-publication audit of `respire-core` (secrets/license) & sync templates (`DONE`) |
 | `CARD-003` | `M2` | [respire-resources#3](https://github.com/risense-ai/respire-resources/issues/3) | `respire-resources` | — | Finalize OpenAPI 3.1 auth/error details, golden JSON fixtures & `oasdiff` gate |
 | `CARD-004` | `M2` | [respire#1](https://github.com/risense-ai/respire/issues/1) | `respire` | `respire-resources#3` | Build `sync-contracts` & Rust/Go/TS SDK codegen pipeline |
 | `CARD-005` | `M3` | [respire#2](https://github.com/risense-ai/respire/issues/2) | `respire` | — | Freeze legacy code repos (`runtime`/`cli`/`client2`) & publish migration notice (`needs:human`) |
