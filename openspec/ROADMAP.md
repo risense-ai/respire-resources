@@ -16,7 +16,7 @@ flowchart LR
     C05 --> C06
 ```
 
-- **Current Status**: Both `risense-ai/respire-resources` and `risense-ai/respire` are live, public, published under **Respire Noncommercial License 1.0**, auto-merge enabled, and protected on `main` (`validate-openspec` / `ci-gate` + `verdict-gate`, with automated post-merge `evidence-register`). Org Project #1 ([Respire Transformation (001-006)](https://github.com/orgs/risense-ai/projects/1)), `M1`–`M6` Milestones, 17 labels, and all **20 DAG-linked Issues** are active (`M1`–`M6` approved; `CARD-001` and `CARD-002` closed; legacy freeze `CARD-005` deferred as `needs:human` until post-`-dev.1` cutover). Audited Core source publishes under **Respire Noncommercial License 1.0** inside `risense-ai/respire/apps/core/` while legacy `risense-ai/respire-core` stays a private archive.
+- **Current Status**: Both `risense-ai/respire-resources` and `risense-ai/respire` are live, public, published under **Respire Noncommercial License 1.0**, auto-merge enabled, and protected on `main` (`validate-openspec` / `ci-gate` + `verdict-gate`, with automated post-merge `evidence-register`). Org Project #1 ([Respire Transformation (001-006)](https://github.com/orgs/risense-ai/projects/1)), `M1`–`M6` Milestones, and 17 labels are in place. The workflow tracks **20 DAG-linked Issues** (`M1`–`M6` approved; `M1` archived; `CARD-001` and `CARD-002` closed; legacy freeze `CARD-005` deferred as `needs:human` until post-`-dev.1` cutover). The Core pre-publication audit is complete. Any later audited source import into `risense-ai/respire/apps/core/` follows **Respire Noncommercial License 1.0**, while legacy `risense-ai/respire-core` stays a private archive.
 
 ---
 
@@ -24,7 +24,7 @@ flowchart LR
 
 | Change | Milestone | Core Objective | Status |
 | --- | --- | --- | --- |
-| [001-resources-openspec-foundation](changes/001-resources-openspec-foundation/proposal.md) | `M1` | SSOT repo, Zero-CJK English-only gate, Milestones/Labels, branch protection, Project #1 sync | `approved` (`T01-01`–`T01-08`, `T01-10` done; ready for `T01-09` archive) |
+| [001-resources-openspec-foundation](changes/archive/2026-11-23-001-resources-openspec-foundation/proposal.md) | `M1` | SSOT repo, Zero-CJK English-only gate, Milestones/Labels, branch protection, Project #1 sync | `archived`; see the [canonical governance spec](specs/governance/spec.md) |
 | [002-runtime-openapi-v1-migration](changes/002-runtime-openapi-v1-migration/proposal.md) | `M2` | Full V1 `openapi.yaml` (REST+SSE), Rust/Go/TS SDKs, legacy JSON-RPC shim, Windows plugin migration | `approved` (`CARD-003` ready) |
 | [003-monorepo-merge-and-release-bridge](changes/003-monorepo-merge-and-release-bridge/proposal.md) | `M3` | Import open-source `core`, `runtime`, filtered `cli`, `client2` into `risense-ai/respire`; path CI + Release Fan-Out | `approved` (`T03-01` done; `CARD-006`–`CARD-008` ready) |
 | [004-ci-guardrails-and-code-slimming](changes/004-ci-guardrails-and-code-slimming/proposal.md) | `M4` | Hard CI guardrails (deps, Zero-CJK, 600-line ratchet, route parity) + 4-app slimming | `approved` |

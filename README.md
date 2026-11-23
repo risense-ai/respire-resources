@@ -31,7 +31,7 @@ All documentation, specifications, source code, comments, scripts, workflows, co
 - **[openspec/config.yaml](openspec/config.yaml)** — OpenSpec schema rules and repository metadata
 - **[openspec/specs/](openspec/specs/README.md)** — Canonical archived specifications
 - **OpenSpec Change Packages (`001`–`006`)**:
-  1. [001-resources-openspec-foundation](openspec/changes/001-resources-openspec-foundation/proposal.md) — OpenSpec governance, English-only gate, Milestones/Labels, branch protection
+  1. [001-resources-openspec-foundation](openspec/changes/archive/2026-11-23-001-resources-openspec-foundation/proposal.md) — OpenSpec governance, English-only gate, Milestones/Labels, branch protection
   2. [002-runtime-openapi-v1-migration](openspec/changes/002-runtime-openapi-v1-migration/proposal.md) — OpenAPI 3.1 (REST + SSE), SDK codegen, legacy JSON-RPC bridge, Windows plugin migration
   3. [003-monorepo-merge-and-release-bridge](openspec/changes/003-monorepo-merge-and-release-bridge/proposal.md) — Open-source `apps/core` + `runtime`/`cli`/`client2` monorepo merge, path-filtered CI, and legacy Release Fan-Out
   4. [004-ci-guardrails-and-code-slimming](openspec/changes/004-ci-guardrails-and-code-slimming/proposal.md) — Anti-regression CI guardrails and 60%+ redundancy elimination across all 4 components

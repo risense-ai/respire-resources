@@ -46,3 +46,9 @@
 - **Root Cause**: No automated scanner prevented non-English prose from being committed outside UI i18n resources.
 - **Guardrail Target (`001` / `004`)**: Enforce Zero-CJK scanning across both `respire-resources` and `respire`, exempting only UI i18n paths.
 - **Status**: Active in `validate-openspec.mjs` and `check-guardrails.mjs`.
+
+### L-007: Audit Closeout Is Not Publication
+
+- **Observation**: The private Core template and pre-publication audit merged after a `CONDITIONAL` Verifier verdict. The remaining template-path limitation applied only to the private archive.
+- **Practice**: Keep audit and publication evidence separate. Preserve third-party notices, keep legacy Core private, and use the published noncommercial license only for the new public repositories.
+- **Status**: [CARD-002](https://github.com/risense-ai/respire-resources/issues/2) is closed. This records one governance lesson, not a new automated gate.
