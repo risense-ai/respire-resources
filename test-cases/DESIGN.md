@@ -8,9 +8,9 @@
 
 | Directory | Runner / Stack | Target Under Test | Mandatory Coverage |
 | --- | --- | --- | --- |
-| `test-cases/scenarios/` | Node.js YAML runner (`runner.mjs`) | Real compiled `rsrs-runtime` | Cold start, capability discovery, SSE download cancel, non-blocking `model.switch` during active `recall`, rollback on missing assets, space CRUD |
-| `test-cases/cli-e2e/` | Node.js / shell subprocess harness | Compiled `rsrs` + `rsrs-runtime` | Text & JSON output parity, `rsrs doctor --fix` `Paused` cleanup, online inactive-model uninstall, upgrade/fallback behavior |
-| `test-cases/plugin-rpc/` | OpenAPI HTTP client + MCP stdio client | `rsrs-runtime` + `rsrs mcp` | Large nested payloads, concurrent recall/store bursts, RFC 9457 error formatting |
+| `test-cases/scenarios/` | Node.js YAML runner (`runner.mjs`) | Real compiled `rsrs-runtime` | Cold start, lossless 1.x SQLite `.db` golden-fixture upgrade + backup + downgrade-guard, capability discovery, SSE download cancel, non-blocking `model.switch` during active `recall`, rollback on missing assets, space CRUD |
+| `test-cases/cli-e2e/` | Node.js / shell subprocess harness | Compiled `rsrs` + `rsrs-runtime` | Legacy CLI flag & JSON output backward compatibility, `rsrs doctor --fix` `Paused` cleanup, online inactive-model uninstall, upgrade/fallback behavior |
+| `test-cases/plugin-rpc/` | OpenAPI HTTP, legacy `/rpc` & MCP stdio client | `rsrs-runtime` + `rsrs mcp` | Legacy `/rpc` shim compatibility, 100 KB+ nested UTF-8 payloads, concurrent recall/store bursts, RFC 9457 error formatting |
 | `test-cases/client2-e2e/` | Playwright (Chromium/WebKitGTK) | Client2 WebUI + Mock/Real Runtime | Full 16-screen navigation, `en` & `zh` localization completeness, zero `NaN`/clipping, icon alignment, state sync after SSE completion |
 
 ---
@@ -25,6 +25,16 @@ Every PR touching `apps/runtime`, `apps/cli`, `apps/client2`, or `contracts/` MU
    - Run model download, online inactive-model deletion (`/v1/models/active-assets`), and workspace operations inside paths containing spaces and Windows directory junctions/reparse points.
 3. **Zero Orphan `Paused` Locks & Single-Pass I/O**:
    - Verify no `Paused` sentinel remains after canceled downloads, config edits, or read-only `secret` calls; verify cold load hashes model files once.
+
+---
+
+## 2B. Mandatory Database & Legacy Plugin Compatibility Invariants (`AGENTS.md` §5–§6)
+
+1. **Sanitized 1.x Golden DB Fixtures (`test-cases/fixtures/db/`)**:
+   - Store representative 1.x SQLite snapshots (empty DB, encrypted TEXT-ID `memories` DB, and comprehensive DB with pending `sync_outbox` rows, `review_history`, `access_grants`, `query_log`, `skill_runs`, `entry_audit`, and triggers).
+   - Verify new `rsrs-runtime`: (a) writes `<db>.bak-pre-v<N>-<ts>` before migrating, (b) migrates atomically with `PRAGMA quick_check = ok`, (c) preserves 100% of existing memories and pending sync rows, (d) stamps monotonic `PRAGMA user_version` and restarts idempotently, and (e) fails closed on databases with a higher `user_version`.
+2. **Legacy Plugin Compatibility (`plugin-rpc/` & `cli-e2e/`)**:
+   - Verify legacy JSON-RPC methods (`runtime.status`, `model.catalog`, `model.switch`, `cli.exec`), legacy `rsrs` CLI flags/JSON outputs, and `rsrs mcp` stdio tools succeed against the new Runtime without requiring plugins to upgrade simultaneously.
 
 ---
 

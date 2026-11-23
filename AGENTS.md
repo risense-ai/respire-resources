@@ -41,14 +41,25 @@
 
 ---
 
-## 5. Capability Negotiation & Windows Rules
+## 5. SQLite Database Backward Compatibility (Zero Tolerance)
 
-1. **Negotiate by capabilities, never version strings**: Clients (`apps/cli`, `apps/client2`, plugins) MUST inspect `capabilities` returned by `GET /v1/health` (or legacy health fallback) rather than comparing Runtime version strings.
-2. **No Windows CLI argument transport**: Plugins and tools MUST call Runtime over local HTTP OpenAPI 3.1 or `rsrs mcp` stdio—never by concatenating large payloads onto CLI arguments.
+1. **Expand-Only Authoritative Schema**: `apps/runtime` MUST NEVER drop, rename, or alter existing columns, primary keys, ciphertext/nonce layouts, or sync triggers on legacy authoritative tables (`memories`, `memory_chunks`, `meta`, `sync_*`, `review_history`, `access_grants`, `query_log`, `query_feedback`, `skill_runs`, `entry_audit`, `recall_pairs`, `core_artifacts`). Extend persisted schema strictly via idempotent additive columns (with defaults) or new tables; only derived cache tables (`retrieval_*`, `diary_*`) may be rebuilt.
+2. **Backup-Before-Migrate & Atomic Transactions**: Before migrating a legacy `.db`, Runtime MUST create an atomic backup (`<db>.bak-pre-v<N>-<ts>`) via SQLite Online Backup API, run migration steps inside a single transaction followed by `PRAGMA quick_check`, and roll back untouched on failure.
+3. **Monotonic `PRAGMA user_version` & Downgrade Guard**: Bridge unversioned 1.x databases (`user_version = 0`) via idempotent column/trigger inspection before stamping a monotonic `user_version`; never edit shipped migration steps; Fail-Closed with an explicit upgrade error if opening a database with a higher `user_version`.
+4. **Golden Legacy DB Regression Gate**: Every PR modifying `apps/runtime` storage MUST pass lossless upgrade, recall, `sync_outbox` preservation, and idempotent restart checks against sanitized 1.x `.db` fixtures in `respire-resources/test-cases/fixtures/db/`.
+5. **Single Writer Only**: Only `apps/runtime` may open SQLite databases; `apps/cli` and `apps/client2` MUST NEVER access `.db` files directly.
 
 ---
 
-## 6. Worktree Isolation, File Caps & Commit Hygiene
+## 6. Capability Negotiation, Plugin Compatibility & Windows Rules
+
+1. **Negotiate by capabilities, never version strings**: Clients (`apps/cli`, `apps/client2`, plugins) MUST inspect `capabilities` returned by `GET /v1/health` (or legacy health fallback) rather than comparing Runtime version strings.
+2. **Preserve all legacy plugin entry points during transition**: Existing `rsrs` CLI flags/JSON outputs, `rsrs mcp` stdio tools, and Runtime's frozen `<200`-line `/rpc` shim MUST remain backward compatible while new plugins adopt OpenAPI 3.1 + Discovery.
+3. **No Windows CLI argument transport**: New/migrated plugins and tools MUST call Runtime over local HTTP OpenAPI 3.1 or `rsrs mcp` stdio—never by concatenating large payloads onto CLI arguments.
+
+---
+
+## 7. Worktree Isolation, File Caps & Commit Hygiene
 
 1. **Worktree isolation**: Never modify or build inside clean `main` clones; work strictly in `../.worktrees/<change-id>/<repo>` branches.
 2. **File size caps**:

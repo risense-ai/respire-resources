@@ -8,8 +8,8 @@
 
 ## Phase 2: Black-Box E2E Referee Suite (`test-cases/`)
 
-- [ ] **T05-04** Implement `test-cases/runner.mjs` and core `scenarios/*.yaml` (cold start, SSE download cancel, concurrent recall during switch, rollback safety, multi-space isolation) (`CARD-018`)
-- [ ] **T05-05** Add `test-cases/cli-e2e/` and `test-cases/plugin-rpc/` including Windows 100 KB+ UTF-8 JSON HTTP/MCP tests and reparse-point online cleanup (`CARD-018`)
+- [ ] **T05-04** Implement `test-cases/runner.mjs`, sanitized 1.x SQLite Golden `.db` fixtures (`test-cases/fixtures/db/`), and core `scenarios/*.yaml` (lossless DB upgrade + backup + downgrade-guard, cold start, SSE download cancel, concurrent recall during switch, rollback safety, multi-space isolation) (`CARD-018`)
+- [ ] **T05-05** Add `test-cases/cli-e2e/` and `test-cases/plugin-rpc/` including legacy `/rpc` + legacy `rsrs` CLI flag compatibility, Windows 100 KB+ UTF-8 JSON HTTP/MCP tests, and reparse-point online cleanup (`CARD-018`)
 - [ ] **T05-06** Add `test-cases/client2-e2e/` Playwright regression suite validating `en` and `zh` UI rendering (using isolated `fixtures/i18n/`), i18n completeness, and layout invariants (`CARD-018`)
 
 ## Phase 3: Monorepo Integration & PR UI Preview
