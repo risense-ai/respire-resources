@@ -6,6 +6,9 @@ info:
   description: |
     Canonical OpenAPI 3.1 contract for Respire Runtime (see openspec/changes/002-runtime-openapi-v1-migration).
     All clients and plugins MUST negotiate features via /v1/health capabilities rather than comparing version strings.
+    Health discovery does not require credentials. Send the discovered Runtime-local Bearer token for protected operations.
+    Existing operation security annotations remain unchanged for compatibility; new backup operations declare localBearer.
+    The legacy JSON-RPC authentication and wire format are outside this contract and are unchanged.
 servers:
   - url: http://127.0.0.1:{port}
     description: Local Loopback Runtime Server
@@ -29,6 +32,8 @@ tags:
     description: Multi-space management and membership
   - name: sync
     description: Cloud/device synchronization status and triggers
+  - name: backup
+    description: Capability-gated backup archive export and restoration
   - name: host
     description: Account, authentication transactions, and device config
 
@@ -51,6 +56,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetails"
+        default:
+          $ref: "#/components/responses/RuntimeProblem"
 
   /v1/status/light:
     get:
@@ -69,6 +76,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/LightStatusResponse"
+        default:
+          $ref: "#/components/responses/RuntimeProblem"
 
   /v1/memories:
     get:
@@ -104,6 +113,9 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetails"
+        default:
+          $ref: "#/components/responses/RuntimeProblem"
+
     post:
       operationId: createMemory
       tags: [memories]
@@ -127,6 +139,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetails"
+        default:
+          $ref: "#/components/responses/RuntimeProblem"
 
   /v1/memories/{memoryId}:
     parameters:
@@ -152,6 +166,9 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetails"
+        default:
+          $ref: "#/components/responses/RuntimeProblem"
+
     patch:
       operationId: updateMemory
       tags: [memories]
@@ -175,6 +192,9 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetails"
+        default:
+          $ref: "#/components/responses/RuntimeProblem"
+
     delete:
       operationId: deleteMemory
       tags: [memories]
@@ -188,6 +208,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetails"
+        default:
+          $ref: "#/components/responses/RuntimeProblem"
 
   /v1/memories/recall:
     post:
@@ -213,6 +235,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetails"
+        default:
+          $ref: "#/components/responses/RuntimeProblem"
 
   /v1/diary:
     get:
@@ -236,6 +260,9 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DiaryListResponse"
+        default:
+          $ref: "#/components/responses/RuntimeProblem"
+
     post:
       operationId: upsertDiaryEntry
       tags: [diary]
@@ -253,6 +280,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DiaryEntry"
+        default:
+          $ref: "#/components/responses/RuntimeProblem"
 
   /v1/organize/deepen/plan:
     post:
@@ -272,6 +301,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/OrganizeDeepenPlanResponse"
+        default:
+          $ref: "#/components/responses/RuntimeProblem"
 
   /v1/organize/deepen/apply:
     post:
@@ -291,6 +322,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/OperationAccepted"
+        default:
+          $ref: "#/components/responses/RuntimeProblem"
 
   /v1/organize/split:
     post:
@@ -310,6 +343,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/OperationAccepted"
+        default:
+          $ref: "#/components/responses/RuntimeProblem"
 
   /v1/organize/suggestions:
     get:
@@ -335,6 +370,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/OrganizeSuggestionsResponse"
+        default:
+          $ref: "#/components/responses/RuntimeProblem"
 
   /v1/models/catalog:
     get:
@@ -348,6 +385,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ModelCatalogResponse"
+        default:
+          $ref: "#/components/responses/RuntimeProblem"
 
   /v1/models/active-assets:
     get:
@@ -361,6 +400,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ActiveModelAssetsResponse"
+        default:
+          $ref: "#/components/responses/RuntimeProblem"
 
   /v1/models/switch:
     post:
@@ -386,6 +427,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetails"
+        default:
+          $ref: "#/components/responses/RuntimeProblem"
 
   /v1/models/downloads:
     post:
@@ -411,6 +454,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetails"
+        default:
+          $ref: "#/components/responses/RuntimeProblem"
 
   /v1/operations/{operationId}:
     parameters:
@@ -436,6 +481,9 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetails"
+        default:
+          $ref: "#/components/responses/RuntimeProblem"
+
     delete:
       operationId: cancelOperation
       tags: [operations]
@@ -453,6 +501,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetails"
+        default:
+          $ref: "#/components/responses/RuntimeProblem"
 
   /v1/operations/{operationId}/events:
     parameters:
@@ -472,6 +522,8 @@ paths:
             text/event-stream:
               schema:
                 $ref: "#/components/schemas/OperationEvent"
+        default:
+          $ref: "#/components/responses/RuntimeProblem"
 
   /v1/spaces:
     get:
@@ -485,6 +537,9 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SpaceListResponse"
+        default:
+          $ref: "#/components/responses/RuntimeProblem"
+
     post:
       operationId: createSpace
       tags: [spaces]
@@ -502,6 +557,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SpaceItem"
+        default:
+          $ref: "#/components/responses/RuntimeProblem"
 
   /v1/spaces/{spaceId}:
     parameters:
@@ -527,6 +584,9 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetails"
+        default:
+          $ref: "#/components/responses/RuntimeProblem"
+
     patch:
       operationId: updateSpace
       tags: [spaces]
@@ -544,6 +604,9 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SpaceItem"
+        default:
+          $ref: "#/components/responses/RuntimeProblem"
+
     delete:
       operationId: deleteSpace
       tags: [spaces]
@@ -557,6 +620,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetails"
+        default:
+          $ref: "#/components/responses/RuntimeProblem"
 
   /v1/spaces/{spaceId}/members:
     parameters:
@@ -576,6 +641,9 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SpaceMemberListResponse"
+        default:
+          $ref: "#/components/responses/RuntimeProblem"
+
     post:
       operationId: inviteSpaceMember
       tags: [spaces]
@@ -593,6 +661,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SpaceMember"
+        default:
+          $ref: "#/components/responses/RuntimeProblem"
 
   /v1/sync/status:
     get:
@@ -606,6 +676,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SyncStatusResponse"
+        default:
+          $ref: "#/components/responses/RuntimeProblem"
 
   /v1/sync/trigger:
     post:
@@ -625,6 +697,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/OperationAccepted"
+        default:
+          $ref: "#/components/responses/RuntimeProblem"
 
   /v1/host/account:
     get:
@@ -638,6 +712,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HostAccountResponse"
+        default:
+          $ref: "#/components/responses/RuntimeProblem"
 
   /v1/host/transactions/login:
     post:
@@ -663,6 +739,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetails"
+        default:
+          $ref: "#/components/responses/RuntimeProblem"
 
   /v1/host/transactions/logout:
     post:
@@ -676,6 +754,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HostTransactionResult"
+        default:
+          $ref: "#/components/responses/RuntimeProblem"
 
   /v1/host/config:
     get:
@@ -689,6 +769,9 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HostConfig"
+        default:
+          $ref: "#/components/responses/RuntimeProblem"
+
     patch:
       operationId: patchHostConfig
       tags: [host]
@@ -706,10 +789,95 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HostConfig"
+        default:
+          $ref: "#/components/responses/RuntimeProblem"
+
+  /v1/backups/export:
+    get:
+      operationId: exportBackup
+      tags: [backup]
+      summary: Stream a backup archive for the selected space
+      description: Available only when health advertises backups.v1. Never accepts a Runtime filesystem path.
+      security:
+        - localBearer: []
+      parameters:
+        - name: space_id
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Opaque backup archive. Clients must not assume its internal format.
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/LocalBearerUnauthorized"
+        default:
+          $ref: "#/components/responses/RuntimeProblem"
+
+  /v1/backups/import:
+    post:
+      operationId: importBackup
+      tags: [backup]
+      summary: Upload a backup archive for asynchronous restoration
+      description: Available only when health advertises backups.v1. Send archive bytes, not a local path.
+      security:
+        - localBearer: []
+      parameters:
+        - name: space_id
+          in: query
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "202":
+          description: Archive accepted for validation and restoration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperationAccepted"
+        "401":
+          $ref: "#/components/responses/LocalBearerUnauthorized"
+        default:
+          $ref: "#/components/responses/RuntimeProblem"
 
 components:
+  securitySchemes:
+    localBearer:
+      type: http
+      scheme: bearer
+      description: Opaque Runtime-local access token obtained through local discovery. Not an account or upstream token.
+  responses:
+    RuntimeProblem:
+      description: Unsuccessful Runtime request
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
+    LocalBearerUnauthorized:
+      description: Missing or invalid Runtime-local access token
+      headers:
+        WWW-Authenticate:
+          description: Bearer authentication challenge
+          schema:
+            type: string
+          example: Bearer
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
   schemas:
     ProblemDetails:
+      description: RFC 9457 problem document. Consumers must handle unfamiliar code values.
       type: object
       required: [type, title, status, detail, code]
       properties:
@@ -724,6 +892,10 @@ components:
           type: string
         code:
           type: string
+          description: |
+            Stable machine-readable error code; not a closed set.
+            Model download failures after exhausting permitted fallback sources use
+            model_mirror_fallback_exhausted. Do not expose source credentials or signed URLs.
         instance:
           type: string
         retryable:
