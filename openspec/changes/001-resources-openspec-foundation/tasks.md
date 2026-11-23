@@ -1,21 +1,22 @@
 # Tasks: 001-resources-openspec-foundation
 
-## 阶段一：仓库与 OpenSpec 骨架初始化（已完成）
+## Phase 1: Repository & OpenSpec Skeleton (Completed)
 
-- [x] **T01-01** 初始化 `D:\sources\repos-new\gh\1memory\respire-resources` 仓库及根目录 `README.md`、`AGENTS.md`、`LESSONS.md`
-- [x] **T01-02** 建立 `openspec/config.yaml`、`openspec/ROADMAP.md`、`openspec/AGENT_EXECUTION_GUIDE.md` 与 `001`–`006` 全部 Change 提案包
-- [x] **T01-03** 建立 `process/roles/*`、`process/scripts/validate-openspec.mjs` 与 `.github/workflows/validate.yml`
-- [x] **T01-04** 创建并推送公开仓库 `risense-ai/respire-resources` 至 GitHub
+- [x] **T01-01** Initialize `D:\sources\repos-new\gh\1memory\respire-resources` with `README.md`, `AGENTS.md`, and `LESSONS.md`
+- [x] **T01-02** Create `openspec/config.yaml`, `openspec/ROADMAP.md`, `openspec/AGENT_EXECUTION_GUIDE.md`, and Changes `001`–`006`
+- [x] **T01-03** Create `process/roles/*`, `process/scripts/validate-openspec.mjs`, and `.github/workflows/validate.yml`
+- [x] **T01-04** Publish public repository `risense-ai/respire-resources` on GitHub
 
-## 阶段二：GitHub 组织治理与仓库模板同步
+## Phase 2: English-Only Conversion, GitHub Governance & Project Sync
 
-- [ ] **T01-05** 同步组织级 GitHub Project 看板 `Respire Transformation (001-006)`：`process/scripts/sync-project-board.mjs` 已就绪，待 Maintainer 运行 `gh auth refresh -s project,read:project` 后执行 `--apply`（见 `CARD-001`）
-- [x] **T01-06** 为 `risense-ai/respire-resources` 与 `risense-ai/respire` 创建统一 Milestone（`M1`–`M6` 1:1 映射 `001`–`006`）及 17 个标准流程/领域标签，并建立 20 张带 `depends_on` DAG 的编排 Issue
-- [ ] **T01-07** 将 `process/templates/ISSUE_TEMPLATE.md`、`PULL_REQUEST_TEMPLATE.md` 与 `coderabbit.yaml` 同步至 `risense-ai/respire-core`（确认 `risense-ai/respire` 已在初始化时同步，见 `CARD-002`）
-- [x] **T01-08** 在 `risense-ai/respire-resources` 开启 `main` 分支保护（必需检查：`validate-openspec`）；在 `risense-ai/respire` 开启 `main` 分支保护（必需检查：`ci-gate`）
-- [ ] **T01-09** 验收归档：全部阶段二卡片关闭后运行 `node process/scripts/validate-openspec.mjs`，并将 `specs/governance/spec.md` 合并至 `openspec/specs/governance/spec.md`
+- [x] **T01-06** Create aligned Milestones (`M1`–`M6`), 17 process/area labels, and 20 DAG-linked orchestration Issues across `risense-ai/respire-resources` and `risense-ai/respire`
+- [x] **T01-08** Enable `main` branch protection on `risense-ai/respire-resources` (`validate-openspec`) and `risense-ai/respire` (`ci-gate`)
+- [x] **T01-10** Convert all docs, specs, scripts, templates, and GitHub Issues to strict English-only and enforce Zero-CJK scanning in CI
+- [ ] **T01-05** Sync org-level GitHub Project v2 board (`CARD-001`): Maintainer runs `gh auth refresh -s project,read:project` followed by `node process/scripts/sync-project-board.mjs --apply`
+- [ ] **T01-07** Perform pre-open-source secret/license audit of `respire-core` and sync `.coderabbit.yaml` + Issue/PR templates (`CARD-002`)
+- [ ] **T01-09** Archive Change `001` by merging `specs/governance/spec.md` into `openspec/specs/governance/spec.md` once Phase 2 closes
 
-## 验收命令
+## Verification Commands
 
 ```sh
 node process/scripts/validate-openspec.mjs

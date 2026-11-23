@@ -4,8 +4,8 @@ info:
   version: 1.0.0-draft
   summary: Canonical REST + SSE contract for respire-runtime, respire-cli, respire-client2, and plugins.
   description: |
-    本契约是 Respire Runtime 的唯一外部接口真相源（参见 openspec/changes/002-runtime-openapi-v1-migration）。
-    所有客户端与插件必须通过 /v1/health 返回的 capabilities 能力位协商功能，禁止对比版本号。
+    Canonical OpenAPI 3.1 contract for Respire Runtime (see openspec/changes/002-runtime-openapi-v1-migration).
+    All clients and plugins MUST negotiate features via /v1/health capabilities rather than comparing version strings.
 servers:
   - url: http://127.0.0.1:{port}
     description: Local Loopback Runtime Server

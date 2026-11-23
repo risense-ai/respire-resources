@@ -6,22 +6,20 @@ repositories:
   resources:
     name: risense-ai/respire-resources
     visibility: public
-    role: OpenSpec specs, OpenAPI 3.1 + Core ABI contracts, HTML prototypes, E2E test-cases, governance
-  core:
-    name: risense-ai/respire-core
-    visibility: private
-    role: Pure in-memory retrieval/embedding/clustering engine & C ABI
+    role: OpenSpec specs, OpenAPI 3.1 + Core ABI contracts, HTML prototypes, E2E suites, governance
   monorepo:
     name: risense-ai/respire
     visibility: public
-    role: Open-source Monorepo hosting apps/runtime, apps/cli, apps/client2, generated packages/runtime-sdk-*
-  legacy_release_mirrors:
+    role: Open-source Monorepo hosting apps/core, apps/runtime, apps/cli, apps/client2, and packages/runtime-sdk-*
+  legacy_migration_sources:
+    - risense-ai/respire-core
     - risense-ai/respire-runtime
     - risense-ai/respire-cli
     - risense-ai/respire-client2
 
 rules:
-  language: zh-CN prose with English technical identifiers and RFC 2119 keywords (MUST, SHALL, SHOULD)
+  language: English only (CJK permitted strictly inside UI i18n files and i18n test fixtures)
+  zero_cjk_gate: true
   max_doc_lines: 400
   max_code_lines: 600
   required_change_artifacts:

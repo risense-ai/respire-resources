@@ -2,26 +2,26 @@
 
 ## ADDED Requirements
 
-### Requirement: 独立只读 Verifier 强制做验分离
-每个实现 PR 在合并前 MUST 由运行在独立进程与只读权限沙箱中的 Verifier Agent 完成核验并跑通关联 E2E 用例；Implementer 不得为自己的代码出具验收通过结论。
+### Requirement: Strict Maker-Checker Separation via Read-Only Verifier
+Every implementation PR MUST be verified before merge by an independent read-only Verifier running in a fresh session/process against `test-cases/` and matching OpenSpec scenarios; Implementer self-approval is strictly forbidden.
 
-#### Scenario: Implementer 尝试自写自合
-- **GIVEN** Implementer 提交了一个实现功能的 PR 但缺少独立只读 Verifier 的核验记录
-- **WHEN** 运行 `respire-process verify-merge` 检查
-- **THEN** 门禁 MUST 处于阻断状态并返回非零退出码
+#### Scenario: Implementer attempts self-verification
+- **GIVEN** an Implementer opens a feature PR with no independent Verifier sign-off
+- **WHEN** `respire-process.mjs verify-merge` runs
+- **THEN** the gate MUST reject merge readiness with a non-zero exit code
 
-### Requirement: Fail-Closed 的可信 Evidence 与依赖解锁
-下游依赖 Issue MUST 仅在前置 Issue 合并至主干、CI 全绿且由 `trusted_bots` 或人类 Maintainer 登记合法 `Evidence` 后才允许进入可执行队列；任何缺失或结构非法元数据 MUST 被拒绝而非静默跳过。
+### Requirement: Fail-Closed Trusted Evidence & DAG Scheduling
+Downstream orchestration Issues MUST remain `BLOCKED` until all `depends_on` Issues are closed with trusted Evidence verified against `.github/agents.yml`; missing or malformed metadata MUST fail closed rather than skip silently.
 
-#### Scenario: 前置 Issue 尚未登记可信 Evidence
-- **GIVEN** Issue B 声明依赖 Issue A，而 Issue A 虽已关闭但缺少可信 `Evidence` 记录
-- **WHEN** Agent 运行 `respire-process next` 选卡
-- **THEN** Issue B MUST 保持 `blocked` 状态并明确报告缺少前置 Evidence
+#### Scenario: Upstream dependency remains open
+- **GIVEN** `CARD-004` declares `depends_on: [risense-ai/respire-resources#3]` while `#3` is still open
+- **WHEN** an Agent runs `node process/scripts/respire-process.mjs next`
+- **THEN** `CARD-004` MUST stay `BLOCKED` and MUST NOT be returned as `READY`
 
-### Requirement: 事故三振出局护栏升格机制
-重复出现 ≥ 3 次的同类型缺陷 MUST 从 `LESSONS.md` 升格为 `respire` 或 `respire-core` 的永久自动化 CI 守护测试或拦截规则。
+### Requirement: 3-Strike Lessons Graduation into CI Guardrails
+Any defect pattern recorded 3 or more times in `LESSONS.md` MUST be promoted to a `guardrail` Issue and converted into an automated CI check or permanent regression test.
 
-#### Scenario: 同类故障第三次在复盘中被识别
-- **GIVEN** 夜间审计脚本发现某类接口吞错或字段漏加问题已在 `LESSONS.md` 记录满 3 次
-- **WHEN** 生成复盘报告
-- **THEN** 系统 MUST 自动创建标记为 `guardrail` 的待立项 Issue，要求将其转化为自动化守护测试
+#### Scenario: Third occurrence of a defect class
+- **GIVEN** the `lessons-audit` workflow identifies a third occurrence of a recurring bug pattern
+- **WHEN** the audit report is generated
+- **THEN** the workflow MUST propose a `guardrail` task to enforce the invariant automatically in CI

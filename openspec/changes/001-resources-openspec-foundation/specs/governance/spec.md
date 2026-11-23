@@ -1,27 +1,35 @@
-# Delta Spec: Governance & OpenSpec Workflow (`001`)
+# Delta Spec: Governance, OpenSpec Workflow & Language Policy (`001`)
 
 ## ADDED Requirements
 
-### Requirement: 变更准入强约束（Spec-First Gate）
-所有新增功能、接口变更、架构重构与 UI 改版 MUST 先在 `respire-resources/openspec/changes/<change-id>/` 建立完整的 OpenSpec Change 包，并获得 Maintainer 批准后方可创建业务代码修改分支。
+### Requirement: Spec-First Change Gate
+Every new feature, interface modification, architectural refactor, or UI redesign MUST be proposed as a complete OpenSpec Change package under `respire-resources/openspec/changes/<change-id>/` and receive Maintainer approval (`spec:approved`) before any implementation branch is opened.
 
-#### Scenario: 未经批准的需求直接尝试开 PR
-- **GIVEN** 一项新功能尚未在 `openspec/changes/` 中存在对应的已批准 Change 包
-- **WHEN** 任何 Agent 或开发者准备开始编写业务代码
-- **THEN** Implementer MUST 拒绝开工，并要求先进入 Propose 阶段补齐 `proposal.md`、`design.md`、`tasks.md` 与增量 `spec.md`
+#### Scenario: Implementation attempted without an approved Change
+- **GIVEN** a proposed feature has no approved Change package in `openspec/changes/`
+- **WHEN** an Implementer Agent runs `node process/scripts/respire-process.mjs next` or prepares to branch
+- **THEN** the workflow MUST block execution (exit code `2`) and instruct the Agent to request Maintainer approval first
 
-### Requirement: Change 资产结构与文档体量上限
-每一个活跃 Change 目录 SHALL 包含 `proposal.md`、`design.md`、`tasks.md` 与至少一份 `specs/<domain>/spec.md`；`openspec/` 目录下任意非历史归档 Markdown 文件 MUST 不超过 400 行，且每个规范需求 MUST 包含 `MUST` 或 `SHALL` 关键字以及至少一个 `#### Scenario:` 块。
+### Requirement: English-Only Repository Policy (Zero Non-i18n CJK)
+All documentation, OpenSpec specs, source code, inline comments, scripts, CI workflows, commit messages, PR bodies, and GitHub Issues in `respire-resources` and `respire` MUST be written strictly in English; non-English UI translations SHALL exist ONLY inside dedicated UI i18n paths and i18n test fixtures.
 
-#### Scenario: 提交超长或缺少场景的规范文件
-- **GIVEN** 开发者提交了一个缺少 `tasks.md` 或单个 `.md` 文件超过 400 行的 Change PR
-- **WHEN** CI 执行 `node process/scripts/validate-openspec.mjs`
-- **THEN** 脚本 MUST 以非零退出码失败并精确指出缺失文件或超限文件名
+#### Scenario: Non-i18n CJK text committed to docs or code
+- **GIVEN** a PR adds Chinese characters inside a specification, Go/Rust source file, comment, or workflow outside exempted i18n paths
+- **WHEN** CI runs `validate-openspec.mjs` or `check-guardrails.mjs`
+- **THEN** the check MUST fail with a non-zero exit code and report the exact `file:line` location
 
-### Requirement: 统一 Issue/PR 可追溯元数据
-所有排入 Milestone 的开发 Issue MUST 声明关联的 `Change ID`、目标 `Spec 节号`、前置依赖 Issue 及对应验收用例 ID；PR 描述 MUST 注明解决的 Issue/Change 与实测命令输出。
+### Requirement: Change Artifact Completeness & Line Limits
+Each non-archive Change directory MUST contain `proposal.md`, `design.md`, `tasks.md`, and at least one `specs/<domain>/spec.md` containing `MUST`/`SHALL` requirements and `#### Scenario:` (`GIVEN`/`WHEN`/`THEN`) blocks; non-archive `.md` files under `openspec/` MUST NOT exceed 400 lines.
 
-#### Scenario: 缺少规范链接的 Issue 进入队列
-- **GIVEN** 一个新建的功能 Issue 未填写关联 `Change ID` 与验收场景
-- **WHEN** Triager Agent 进行分拣检查
-- **THEN** Triager MUST 标记需要补充规格信息且不得将其排入可执行队列
+#### Scenario: Oversized or incomplete Change submitted
+- **GIVEN** a PR adds an OpenSpec file exceeding 400 lines or omits `tasks.md`
+- **WHEN** CI runs `node process/scripts/validate-openspec.mjs`
+- **THEN** validation MUST fail and name every violating file
+
+### Requirement: Traceable Issue & Milestone Metadata
+Every scheduled orchestration Issue MUST carry a valid `<!-- respire-card ... -->` metadata block linking `id`, `change`, `milestone`, `target_repo`, and `depends_on`; every implementation PR MUST attach the matching Milestone and include `Fixes <owner/repo>#<issue>`.
+
+#### Scenario: Issue missing mandatory OpenSpec metadata
+- **GIVEN** a newly opened feature Issue omits its Change ID or E2E verification reference
+- **WHEN** Triager inspects the Issue
+- **THEN** Triager MUST apply `metadata:invalid` or `needs-info` and withhold scheduling until completed

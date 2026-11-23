@@ -2,26 +2,26 @@
 
 ## ADDED Requirements
 
-### Requirement: 禁用依赖与跨层隔离 CI 护栏
-CI MUST 在每次 PR 中校验各组件依赖清单：禁止 `apps/cli` 依赖任何存储/服务端 crate，禁止 `apps/client2` 引入任何 SQLite 驱动，禁止 `respire-core` 引入文件或网络 I/O crate。
+### Requirement: Hard Dependency Isolation & Zero-I/O Core Guardrails
+CI MUST verify every PR against dependency rules: `apps/core` MUST NOT import filesystem, SQLite, or network I/O crates; `apps/cli` MUST NOT depend on server/storage crates or `apps/runtime`/`apps/core`; `apps/client2` MUST NOT import any SQLite driver.
 
-#### Scenario: 在 Client2 重新引入 SQLite 驱动
-- **GIVEN** 某 PR 在 `apps/client2/go.mod` 中新增了 `github.com/ncruces/go-sqlite3` 或其他 SQLite 包
-- **WHEN** CI 运行依赖红线校验脚本
-- **THEN** 校验 MUST 失败并阻断合入
+#### Scenario: SQLite driver re-introduced in Client2
+- **GIVEN** a PR adds `github.com/ncruces/go-sqlite3` or any SQLite module to `apps/client2/go.mod`
+- **WHEN** CI runs `node scripts/check-guardrails.mjs`
+- **THEN** the guardrail check MUST fail and block merge
 
-### Requirement: 单文件体量上限与单调递减棘轮
-任何新增或已完成拆分的代码文件 MUST 不超过 600 行；尚未拆分的存量巨型文件在白名单棘轮约束下行数 MUST 只减不增。
+### Requirement: Code File Line Cap & Monotonic Slimming Ratchet
+Every new or refactored source file MUST NOT exceed 600 lines; grandfathered oversized files MUST be tracked under a monotonic decreasing baseline so they never grow larger.
 
-#### Scenario: 提交超过 600 行的新业务文件
-- **GIVEN** 某 PR 在 `apps/runtime` 中新建了一个 750 行的 Rust 模块
-- **WHEN** CI 运行体量门禁
-- **THEN** CI MUST 失败并提示按业务域拆分
+#### Scenario: New oversized Rust or Go module introduced
+- **GIVEN** a PR creates a new 750-line file under `apps/runtime/`
+- **WHEN** CI checks file size limits
+- **THEN** CI MUST fail and instruct the author to split by domain
 
-### Requirement: 模型下载与冷加载单次流式校验
-Runtime 与客户端在整个模型下载与冷加载事务内 MUST 仅执行 1 次全文件字节级 SHA-256 校验，禁止 CPU-owned 模式强求冗余 `.onnx` 文件，且禁止为下载、非活跃模型卸载或改配置而停止 Runtime 或写 `Paused`。
+### Requirement: Single-Pass Streaming Model Verification & Lock-Free Runtime Operations
+Model download and cold loading MUST execute at most 1 full-file byte-level SHA-256 pass, CPU-owned profiles MUST NOT require redundant `.onnx` files alongside `.ort`, and Runtime MUST stay running without `Paused` during downloads, non-active uninstalls, and config writes.
 
-#### Scenario: 在线卸载非活跃模型
-- **GIVEN** Runtime 正在运行且当前活跃模型为 `m3`
-- **WHEN** 用户在 CLI 或 Client2 触发卸载非活跃模型 `bge-small`
-- **THEN** 客户端 SHALL 通过 `/v1/models/active-assets` 确认安全后直接在线删除目录，期间 Runtime MUST 保持服务不断联且不写入 `Paused`
+#### Scenario: Online uninstall of an inactive model
+- **GIVEN** Runtime is serving with active model `m3`
+- **WHEN** the user uninstalls inactive model `bge-small` via CLI or Client2
+- **THEN** the client SHALL verify safety via `GET /v1/models/active-assets` and remove the directory online without stopping Runtime or writing `Paused`

@@ -1,16 +1,20 @@
 #!/usr/bin/env node
-// Respire 确定性多 Agent 流程引擎（借鉴 ShiningRay/sebas-process，Fail-Closed）
-// 退出码约定：
-//   0 = 正常执行 / 找到可执行任务
-//   1 = 非法参数、元数据缺失或校验失败（Fail-Closed）
-//   2 = blocked / needs_human（全部卡均在等待 Maintainer 审批、人工干预或前置依赖）
+// Deterministic multi-agent workflow scheduler & gate CLI (modeled on ShiningRay/sebas-process, Fail-Closed).
+// Exit codes:
+//   0 = Success / READY card selected
+//   1 = Invalid args, missing metadata, or check error (Fail-Closed)
+//   2 = blocked / needs_human (waiting on Maintainer approval, manual action, or upstream dependencies)
 
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
 const REPOS = ["risense-ai/respire-resources", "risense-ai/respire"];
-const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1")), "..", "..");
+const ROOT = path.resolve(
+  path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1")),
+  "..",
+  ".."
+);
 
 function gh(args, input = null) {
   return execFileSync("gh", args, {
@@ -84,10 +88,10 @@ function fetchAllCards() {
 }
 
 function classifyCard(card, byRef) {
-  if (card.state === "closed") return { status: "DONE", reason: "Issue 已关闭" };
-  if (card.labels.has("metadata:invalid")) return { status: "INVALID", reason: "带有 metadata:invalid 标签" };
-  if (card.labels.has("agent:in-progress")) return { status: "IN_PROGRESS", reason: "已有 Agent 正在推进" };
-  if (card.labels.has("agent:verify")) return { status: "VERIFYING", reason: "等待独立只读 Verifier 核验" };
+  if (card.state === "closed") return { status: "DONE", reason: "Issue closed" };
+  if (card.labels.has("metadata:invalid")) return { status: "INVALID", reason: "Has metadata:invalid label" };
+  if (card.labels.has("agent:in-progress")) return { status: "IN_PROGRESS", reason: "Currently claimed by an Agent" };
+  if (card.labels.has("agent:verify")) return { status: "VERIFYING", reason: "Awaiting independent read-only Verifier" };
 
   const unmetDeps = card.meta.depends_on.filter((depRef) => {
     const dep = byRef.get(depRef);
@@ -95,34 +99,33 @@ function classifyCard(card, byRef) {
   });
 
   if (card.labels.has("needs:human")) {
-    return { status: "NEEDS_HUMAN", reason: "需要人类 Maintainer 执行/授权", unmetDeps };
+    return { status: "NEEDS_HUMAN", reason: "Requires human Maintainer action/authorization", unmetDeps };
   }
   if (!card.labels.has("spec:approved")) {
-    return { status: "WAITING_APPROVAL", reason: "待 Maintainer 批准（缺少 spec:approved 标签）", unmetDeps };
+    return { status: "WAITING_APPROVAL", reason: "Awaiting Maintainer approval (missing spec:approved)", unmetDeps };
   }
   if (unmetDeps.length > 0) {
-    return { status: "BLOCKED", reason: `等待前置依赖关闭: ${unmetDeps.join(", ")}`, unmetDeps };
+    return { status: "BLOCKED", reason: `Waiting on upstream dependencies: ${unmetDeps.join(", ")}`, unmetDeps };
   }
-  return { status: "READY", reason: "规范已批且依赖全部就绪，可认领执行", unmetDeps: [] };
+  return { status: "READY", reason: "Approved and unblocked; ready to claim", unmetDeps: [] };
 }
 
 function cmdStatus() {
   const { cards, byRef } = fetchAllCards();
   if (cards.length === 0) {
-    console.error("未找到任何带 respire-card 元数据的编排 Issue。");
+    console.error("No orchestration Issues with respire-card metadata found.");
     process.exit(1);
   }
 
   const byMs = new Map();
   for (const card of cards) {
-    const cls = classifyCard(card, byRef);
-    card.cls = cls;
+    card.cls = classifyCard(card, byRef);
     if (!byMs.has(card.msKey)) byMs.set(card.msKey, { title: card.milestone, items: [] });
     byMs.get(card.msKey).items.push(card);
   }
 
-  console.log("=== Respire OpenSpec 里程碑总览 ===");
-  for (const [msKey, group] of [...byMs.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+  console.log("=== Respire OpenSpec Milestone Overview ===");
+  for (const [, group] of [...byMs.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
     const done = group.items.filter((c) => c.cls.status === "DONE").length;
     const ready = group.items.filter((c) => c.cls.status === "READY").length;
     const inProg = group.items.filter((c) => c.cls.status === "IN_PROGRESS").length;
@@ -130,7 +133,7 @@ function cmdStatus() {
     for (const c of group.items) {
       console.log(`  - ${c.meta.id} | ${c.cls.status.padEnd(16)} | ${c.ref} | ${c.title}`);
       if (c.cls.status !== "DONE" && c.cls.status !== "READY") {
-        console.log(`      原因: ${c.cls.reason}`);
+        console.log(`      Reason: ${c.cls.reason}`);
       }
     }
   }
@@ -153,26 +156,27 @@ function cmdNext(asJson) {
       summary: { waiting_approval: waitingApproval, needs_human: needsHuman, blocked },
       hint:
         waitingApproval > 0
-          ? "请 Maintainer 批准目标里程碑（例如运行: node process/scripts/respire-process.mjs approve-milestone M1）"
-          : "请先完成 needs:human 卡或推进已认领中的任务。",
+          ? "Ask Maintainer to approve target Milestone (e.g.: node process/scripts/respire-process.mjs approve-milestone M1)"
+          : "Complete needs:human cards or finish active in-progress tasks first.",
     };
     if (asJson) {
       console.log(JSON.stringify(payload, null, 2));
     } else {
-      console.log("当前没有新任务处于 READY 状态（Fail-Closed 拦截）。");
+      console.log("No READY cards available (Fail-Closed gate).");
       if (inProgress.length > 0) {
-        console.log("正在推进中的卡片:");
+        console.log("Active in-progress cards:");
         for (const x of inProgress) console.log(`  - ${x.card.meta.id} (${x.card.ref}): ${x.card.url}`);
       }
-      console.log(`统计: 待批准=${waitingApproval}, 待人工=${needsHuman}, 依赖阻塞=${blocked}`);
-      console.log(`下一步建议: ${payload.hint}`);
+      console.log(`Summary: waiting_approval=${waitingApproval}, needs_human=${needsHuman}, blocked=${blocked}`);
+      console.log(`Next step: ${payload.hint}`);
     }
     process.exit(2);
   }
 
   const chosen = ready[0].card;
   const targetDir = chosen.meta.target_repo?.split("/")[1] || "respire";
-  const worktreeCmd = `git -C ${targetDir} worktree add ../.worktrees/${chosen.meta.id.toLowerCase()}/${targetDir} -b feat/${chosen.meta.id.toLowerCase()}`;
+  const slug = chosen.meta.id.toLowerCase();
+  const worktreeCmd = `git -C ${targetDir} worktree add ../.worktrees/${slug}/${targetDir} -b feat/${slug}`;
   const out = {
     status: "ready",
     card_id: chosen.meta.id,
@@ -186,42 +190,42 @@ function cmdNext(asJson) {
     claim_command: `node process/scripts/respire-process.mjs claim ${chosen.ref}`,
     worktree_command: worktreeCmd,
     pr_requirements: [
-      `PR 必须关联 Milestone: ${chosen.milestone}`,
-      `PR 正文必须包含: Fixes ${chosen.ref}`,
+      `Attach Milestone: ${chosen.milestone}`,
+      `Include in PR body: Fixes ${chosen.ref}`,
     ],
   };
 
   if (asJson) {
     console.log(JSON.stringify(out, null, 2));
   } else {
-    console.log(`=== 推荐认领下一张任务卡: ${out.card_id} ===`);
+    console.log(`=== Next Recommended Card: ${out.card_id} ===`);
     console.log(`Issue      : ${out.ref} (${out.url})`);
     console.log(`Title      : ${out.title}`);
     console.log(`Milestone  : ${out.milestone}`);
     console.log(`OpenSpec   : ${out.spec_dir}`);
     console.log(`Target Repo: ${out.target_repo}`);
-    console.log(`\n执行步骤:`);
-    console.log(`  1. 认领锁定: ${out.claim_command}`);
-    console.log(`  2. 建工作树: ${out.worktree_command}`);
-    console.log(`  3. 按 ${out.spec_dir}/{design.md,tasks.md,specs/*/spec.md} 施工并跑本地校验`);
-    console.log(`  4. 提 PR 时务必设置 Milestone「${out.milestone}」并写「Fixes ${out.ref}」`);
+    console.log("\nExecution steps:");
+    console.log(`  1. Claim lock : ${out.claim_command}`);
+    console.log(`  2. Worktree   : ${out.worktree_command}`);
+    console.log(`  3. Implement  : Follow ${out.spec_dir}/{design.md,tasks.md,specs/*/spec.md} strictly in English`);
+    console.log(`  4. Open PR    : Attach Milestone "${out.milestone}" and include "Fixes ${out.ref}"`);
   }
 }
 
 function cmdClaim(arg) {
   if (!arg) {
-    console.error("用法: respire-process.mjs claim <CARD-XXX | owner/repo#number>");
+    console.error("Usage: respire-process.mjs claim <CARD-XXX | owner/repo#number>");
     process.exit(1);
   }
   const { byRef, byId } = fetchAllCards();
   const card = byId.get(arg.toUpperCase()) || byRef.get(arg);
   if (!card) {
-    console.error(`未找到编排卡片: ${arg}`);
+    console.error(`Card not found: ${arg}`);
     process.exit(1);
   }
   const cls = classifyCard(card, byRef);
   if (cls.status !== "READY") {
-    console.error(`拒绝认领 ${card.meta.id} (${card.ref})，当前状态为 ${cls.status}: ${cls.reason}`);
+    console.error(`Refusing claim on ${card.meta.id} (${card.ref}); status is ${cls.status}: ${cls.reason}`);
     process.exit(2);
   }
   gh([
@@ -235,19 +239,19 @@ function cmdClaim(arg) {
     "--remove-label",
     "agent:ready",
   ]);
-  console.log(`已认领 ${card.meta.id} (${card.ref}) -> 添加 agent:in-progress`);
+  console.log(`Claimed ${card.meta.id} (${card.ref}) -> added agent:in-progress`);
 }
 
 function cmdApproveMilestone(target) {
   if (!target) {
-    console.error("用法: respire-process.mjs approve-milestone <M1|M2|M3|M4|M5|M6|all>");
+    console.error("Usage: respire-process.mjs approve-milestone <M1|M2|M3|M4|M5|M6|all>");
     process.exit(1);
   }
   const norm = target.toUpperCase();
   const { cards, byRef } = fetchAllCards();
   const matched = cards.filter((c) => c.state === "open" && (norm === "ALL" || c.msKey === norm));
   if (matched.length === 0) {
-    console.error(`未找到属于 ${target} 的未关闭卡片。`);
+    console.error(`No open cards found matching milestone ${target}.`);
     process.exit(1);
   }
 
@@ -276,10 +280,10 @@ function cmdApproveMilestone(target) {
       for (const l of removeLabels) args.push("--remove-label", l);
       gh(args);
       console.log(
-        `已更新 ${card.meta.id} (${card.ref}): +[${addLabels.join(",")}] -[${removeLabels.join(",")}]`
+        `Updated ${card.meta.id} (${card.ref}): +[${addLabels.join(",")}] -[${removeLabels.join(",")}]`
       );
     } else {
-      console.log(`跳过 ${card.meta.id} (${card.ref}): 无需变更标签`);
+      console.log(`Skipped ${card.meta.id} (${card.ref}): labels already up to date`);
     }
   }
 }
@@ -292,19 +296,19 @@ function cmdRoles(args) {
   if (oneLine) {
     const prompts = {
       implementer:
-        "你是 Respire Implementer：先读 respire-resources/AGENTS.md 与 openspec/AGENT_EXECUTION_GUIDE.md，跑 `node process/scripts/respire-process.mjs next` 认领任务，在独立 .worktrees/ 按 tasks.md 实施并提交绑定 Milestone 与 Fixes #的 PR，禁止自写自验。",
+        "You are Respire Implementer: read respire-resources/AGENTS.md and openspec/AGENT_EXECUTION_GUIDE.md, run `node process/scripts/respire-process.mjs next` (stop on exit 2), claim the READY card, implement strictly in English inside ../.worktrees/, pass guardrails, and open a Milestone-linked PR with `Fixes <repo>#<num>`. Never self-verify.",
       verifier:
-        "你是 Respire 只读 Verifier（必须新会话/只读）：严禁改文件/Issue；读目标 PR Diff 与关联 OpenSpec，实跑测试与 test-cases/，按 PASS/CONDITIONAL/REJECT 出具实证报告，跑不了如实写未实测。",
+        "You are Respire read-only Verifier (new session/read-only): modify zero files/Issues; audit PR diff, CI checks, matching OpenSpec scenarios, and test-cases/, then emit a PASS/CONDITIONAL/REJECT verdict with concrete command evidence (mark unrun checks UNTESTED).",
       triager:
-        "你是 Respire Triager：负责整理需求与起草 OpenSpec Change 四件套、维护 Issue 元数据标签；严禁替 Maintainer 批准 spec:approved 或修改产品源码。",
+        "You are Respire Triager: deduplicate Issues, draft English OpenSpec 4-file Change packages, and check DAG metadata; never apply spec:approved or modify product source code.",
       scribe:
-        "你是 Respire Scribe：将已验收 Change 归档进 openspec/specs/、更新 ROADMAP.md 与 LESSONS.md，确保 validate-openspec.mjs 全绿。",
+        "You are Respire Scribe: archive verified & merged Changes into openspec/specs/, update ROADMAP.md and LESSONS.md in English, and ensure validate-openspec.mjs exits 0.",
       "release-manager":
-        "你是 Respire Release Manager：按 Maintainer 指定的组件版本号核对绿灯 CI，推送 runtime-v*/cli-v*/client2-v* Tag，校验新仓、老仓镜像与 NPM 产物一致。",
+        "You are Respire Release Manager: given Maintainer's component version, verify green main CI, push runtime-v*/cli-v*/client2-v*, and verify Monorepo, legacy mirror, and NPM artifacts.",
     };
     if (roleName) {
       if (!prompts[roleName]) {
-        console.error(`未知角色: ${roleName}`);
+        console.error(`Unknown role: ${roleName}`);
         process.exit(1);
       }
       console.log(prompts[roleName]);
@@ -316,7 +320,7 @@ function cmdRoles(args) {
 
   const targetFile = roleName ? path.join(rolesDir, `${roleName}.md`) : path.join(rolesDir, "README.md");
   if (!fs.existsSync(targetFile)) {
-    console.error(`未找到角色文档: ${targetFile}`);
+    console.error(`Role guide not found: ${targetFile}`);
     process.exit(1);
   }
   console.log(fs.readFileSync(targetFile, "utf8"));
@@ -342,8 +346,8 @@ switch (cmd) {
   default:
     console.log(
       [
-        "Respire Process CLI — 多 Agent 确定性编排工具",
-        "用法:",
+        "Respire Process CLI - Deterministic Multi-Agent Orchestrator",
+        "Usage:",
         "  node process/scripts/respire-process.mjs status",
         "  node process/scripts/respire-process.mjs next [--json]",
         "  node process/scripts/respire-process.mjs claim <CARD-XXX | owner/repo#num>",

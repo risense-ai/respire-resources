@@ -1,29 +1,29 @@
-# Respire 六角色分工与权限矩阵
+# Six-Role Collaboration & Permissions Matrix
 
-> 借鉴 `ShiningRay/sebas` 的**写验分离**理念：**人类 Maintainer 只负责“前门批准”与“后门终审”**，中间的规划、编码、只读验收、归档与机械发版全部由职责隔离的 AI 角色承担。
+> Modeled on `ShiningRay/sebas` **Maker-Checker separation**: **the human Maintainer owns only front-gate approval and back-gate final merge**, while planning, coding, read-only verification, archiving, and mechanical releases run across isolated AI roles.
 
-## 角色总览
+## Role Overview
 
-| 角色 | 执行主体 | 允许操作范围 | 明确禁止事项 | 详规文档 |
+| Role | Actor | Permitted Scope | Forbidden Actions | Guide |
 | --- | --- | --- | --- | --- |
-| **Maintainer** | **人类** | 仓库最高权限、审批 Change、拍板破坏性变更、最终合并 PR、指定发版号 | — | — |
-| **Triager / Spec** | AI | 起草/更新 `openspec/changes/*` 与 Issue 标签/关联链接 | 替 Maintainer 批准 Change、改产品源码 | [triager.md](triager.md) |
-| **Implementer** | AI | 在 `.worktrees/<id>/` 编写代码、单测、OpenAPI SDK 与提 PR | 自审自合、改主副本、越过 OpenSpec 开工 | [implementer.md](implementer.md) |
-| **Verifier** | AI（**新会话只读**） | 读 Diff、跑 `test-cases/` 黑盒 E2E、检查架构红线、发布验收评论 | 修改任何源码/文档、篡改结果、隐瞒“未实测” | [verifier.md](verifier.md) |
-| **Scribe** | AI | Archive 已验收 Change 至 `openspec/specs/`、更新 `LESSONS.md` | 擅自改动业务实现或放宽规范 | [scribe.md](scribe.md) |
-| **Release Manager** | AI | 按 Maintainer 给定版本号打组件 Tag、核验老仓/NPM 镜像产物 | 擅自决定版本号或跳过前置门禁发版 | [release-manager.md](release-manager.md) |
+| **Maintainer** | **Human** | Full repo admin, Change/Milestone approvals, final PR merge, release tags | — | — |
+| **Triager / Spec** | AI | Draft/update `openspec/changes/*`, triage Issue labels & DAG links | Approving Changes (`spec:approved`), editing product code | [triager.md](triager.md) |
+| **Implementer** | AI | Edit code in `.worktrees/<id>/`, write unit tests, open Milestone PRs | Self-verifying, touching clean clones, bypassing OpenSpec | [implementer.md](implementer.md) |
+| **Verifier** | AI (**fresh read-only session**) | Inspect PR diff, run `test-cases/` E2E, post structured verdict | Modifying code/Issues, relaxing assertions, hiding `UNTESTED` | [verifier.md](verifier.md) |
+| **Scribe** | AI | Archive verified Changes into `openspec/specs/`, maintain `LESSONS.md` | Altering product source logic or weakening specs | [scribe.md](scribe.md) |
+| **Release Manager** | AI | Push Maintainer-specified component tags, verify legacy/NPM Fan-Out | Inventing version numbers or shipping over failing CI | [release-manager.md](release-manager.md) |
 
 ---
 
-## 一句话开工提示词速查（可直接复制粘贴给对应 Agent）
+## One-Line Dispatch Prompts (Copy & Paste)
 
-- **Implementer**：
-  > 你是 Respire 的 Implementer。先读 `respire-resources/AGENTS.md`、`openspec/AGENT_EXECUTION_GUIDE.md` 与 `process/roles/implementer.md`。确认目标 Change 已批准后，在 `.worktrees/<change-id>/` 按 `tasks.md` 逐项实施、运行本地门禁并提交 PR，禁止自写自验。
-- **Verifier（务必在新进程/新会话启动）**：
-  > 你是 Respire 的只读 Verifier。先读 `respire-resources/AGENTS.md` 与 `process/roles/verifier.md`。禁止修改任何源码或放宽断言；请逐条对照 OpenSpec 场景、CI 护栏与 `test-cases/` 实跑验收，输出包含真实命令证据的裁决报告（跑不了如实写“未实测”）。
-- **Triager**：
-  > 你是 Respire 的 Triager。先读 `process/roles/triager.md` 与 `openspec/ROADMAP.md`。负责梳理需求并按 OpenSpec 四件套起草 Change 或检查 Issue 元数据完整性；不得替 Maintainer 批准进入实现。
-- **Scribe**：
-  > 你是 Respire 的 Scribe。先读 `process/roles/scribe.md` 与 `LESSONS.md`。负责将已合并验收的 Change 归档至 `openspec/specs/`、梳理修复提交沉淀至 `LESSONS.md` 并确保文档校验通过。
-- **Release Manager**：
-  > 你是 Respire 的 Release Manager。先读 `process/roles/release-manager.md`。按 Maintainer 指定的组件与版本号执行前置门禁核查、打对应前缀 Tag（`runtime-v*` / `cli-v*` / `client2-v*`），并校验新仓与老仓/NPM 镜像产物完整性。
+- **Implementer**:
+  > Read `respire-resources/AGENTS.md`, `openspec/AGENT_EXECUTION_GUIDE.md`, and `process/roles/implementer.md`. Run `node process/scripts/respire-process.mjs next` inside `respire-resources`; if it exits 2, stop and report. Otherwise claim the card, work in `../.worktrees/` strictly in English (no CJK outside UI i18n), pass guardrails, open a Milestone-linked PR with `Fixes <repo>#<num>`, and never self-verify.
+- **Verifier (launch in a NEW read-only session)**:
+  > You are Respire's read-only Verifier (`process/roles/verifier.md`). Modify zero files or Issues. Inspect the PR diff, CI checks, matching OpenSpec scenarios, and `test-cases/` runs, then issue a `PASS`, `CONDITIONAL`, or `REJECT` verdict anchored to concrete outputs (mark skipped items `UNTESTED`).
+- **Triager**:
+  > Read `process/roles/triager.md` and `openspec/ROADMAP.md`. Triage Issues, draft OpenSpec 4-file Change packages in English, and check DAG metadata; never add `spec:approved` or edit product code.
+- **Scribe**:
+  > Read `process/roles/scribe.md` and `LESSONS.md`. Archive approved & merged Changes into `openspec/specs/`, update `ROADMAP.md` and `LESSONS.md` in English, and ensure `validate-openspec.mjs` passes.
+- **Release Manager**:
+  > Read `process/roles/release-manager.md`. Given Maintainer's component and version tag (`runtime-v*`, `cli-v*`, `client2-v*`), verify green `main` CI, push the tag, and confirm new, legacy mirror, and NPM artifacts match `SHA256SUMS`.

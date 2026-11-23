@@ -1,7 +1,7 @@
-# prototypes/tokens — 共享视觉设计令牌
+# prototypes/tokens — Shared Visual Design Tokens
 
-遵循与 `respire-client2` 一致的视觉约定（后续在 `005` 阶段抽出完整 CSS 变量文件）：
+Aligned with `apps/client2` visual conventions (extracted into CSS variables during Change `005`):
 
-- **流体字号基准**：`clamp(14px, 0.5rem + 0.62vw, 18.8px)`，所有组件间距、尺寸、字号一律使用 `rem`，禁止硬编码 `px` 控件尺寸。
-- **双语排版**：覆盖中文（Noto Serif SC / Work Sans）与英文显示，确保不发生截断与换行溢出。
-- **状态标记规范**：采用统一状态圆点或色块标记（禁止彩色左边框条纹）。
+- **Fluid Root Scale**: `clamp(14px, 0.5rem + 0.62vw, 18.8px)` — all spacing, sizing, and font tokens use `rem` rather than fixed `px`.
+- **Bilingual Layout Support**: Validates both `en` and `zh` UI locales (loading localized strings from dedicated i18n bundles) without overflow or clipping.
+- **State Indicators**: Consistent status dots or swatches only (no colored left-border stripes).

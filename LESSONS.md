@@ -1,42 +1,48 @@
-# LESSONS.md — 事故复盘与 CI 护栏升格台账
+# LESSONS.md — Incident Ledger & Automated Guardrail Graduation
 
-> 借鉴 `yetone/magpie` 的进化机制：**只靠文档嘱咐 Agent 必然失效，只有把重复踩过的坑焊进自动化校验和守护测试，系统才不会退化**。
+> Modeled on `yetone/magpie`: **prose instructions alone always decay under fast AI iteration; repeated failures MUST graduate into deterministic CI checks and regression tests**.
 
-## 升格规则（3-Strike Rule）
+## Graduation Rule (3-Strike Policy)
 
-1. 每次遇到线上缺陷、PR 打回或跨仓回归事故，必须在合入修复时同步追加一条记录到本文件（包含：**现象、根因、本可拦截的规则、当前状态**）。
-2. **同类型问题累计出现 ≥ 3 次**，或涉及严重安全/架构边界退化，必须立刻立项一个自动化守护测试或 CI 门禁脚本；未补齐护栏前，同类修复不视为彻底闭环。
+1. Whenever a production defect, CI regression, or multi-round PR rejection occurs, record an entry below (Symptom, Root Cause, Guardrail Target, Status).
+2. **Once the same failure pattern appears ≥ 3 times** (or violates a hard architectural boundary), it MUST be converted into an automated CI check or permanent regression test (`guardrail` label).
 
 ---
 
-## 历史基线教训（立项前盘点）
+## Historical Baseline Lessons
 
-### L-001：`respire-cli` 滞留 54,000+ 行遗留服务端源码与 674 个重复契约文件
-- **现象**：拆仓后 `respire-cli` 仍保留 `runtime/`、`crates/{core-sdk,app,app-domain,storage,crypto}` 及 `server` feature 门控代码（共 5.4 万余行），且 `contracts/` 与 `respire-runtime/contracts/` 长期各自复制维护 674 个文件，导致修一处必须同步改两三处。
-- **根因**：拆仓时缺乏“禁用依赖检查”和“跨端物理构建隔离”，开发人员图省事继续引用本地服务端 crate。
-- **升格目标（对应 Change `003` / `004`）**：在 CI 中强制校验 `apps/cli/Cargo.toml` 禁止依赖任何服务端/存储 crate，只允许消费唯一契约生成的 `packages/runtime-sdk-rs`。
-- **状态**：待 `003` / `004` 落地护栏。
+### L-001: Legacy Server Crates & Duplicate Contracts Lingering Inside CLI
+- **Symptom**: After splitting repositories, `respire-cli` kept ~54,500 lines of legacy server code (`runtime/`, `crates/{core-sdk,app,app-domain,storage,crypto}`, and 14 `server`-gated files) plus 674 duplicated contract fixtures alongside `respire-runtime`.
+- **Root Cause**: Splitting repos without dependency bans or build-manifest isolation allowed convenient cross-layer coupling to persist.
+- **Guardrail Target (`003` / `004`)**: Enforce isolated `Cargo.toml` manifests per app in `risense-ai/respire` and run `scripts/check-guardrails.mjs` to block server/storage/cross-app dependencies in `apps/cli`.
+- **Status**: Scaffolded in `risense-ai/respire`; pending `003` & `004` execution.
 
-### L-002：`respire-client2` 引入 WASM SQLite 并用 Go 重写 11,267 行业务状态机
-- **现象**：桌面端 Go 宿主引入 `github.com/ncruces/go-sqlite3` 直读业务数据库，并在 `internal/host/` 平行实现了一套账户/登录/恢复/空间/模型卸载状态机（占非测试代码 58%），每次状态微调都要四处打补丁甚至停服加锁。
-- **根因**：Runtime 未先提供完整的类型化事务与模型托管 API，Client2 在无契约约束下选择“绕过 Runtime 直接下场写业务”。
-- **升格目标（对应 Change `002` / `004`）**：OpenAPI 3.1 补齐 `/v1/host/transactions/*` 与 `/v1/models/*`；CI 扫描 `apps/client2/go.mod` 严禁出现任何 `sqlite` 驱动依赖。
-- **状态**：待 `002` / `004` 落地护栏。
+### L-002: Client2 Re-implementing 11k Lines of State Machines & Importing WASM SQLite
+- **Symptom**: `respire-client2` imported `github.com/ncruces/go-sqlite3` (WASM) to inspect Runtime databases directly and wrote 52 Go files (~11,267 lines) duplicating account, space, model, and migration state machines.
+- **Root Cause**: Runtime lacked typed HTTP/OpenAPI transaction APIs, tempting the desktop host to bypass Runtime.
+- **Guardrail Target (`002` / `004`)**: Expose `/v1/host/transactions/*`, `/v1/spaces/*`, and `/v1/models/*` in `openapi.yaml`; fail CI whenever `apps/client2/go.mod` contains any SQLite dependency.
+- **Status**: `go.mod` ban active in `check-guardrails.mjs`; Go slimming tracked in `CARD-016`.
 
-### L-003：模型下载、校验与冷加载链路存在 4–7 次背靠背全量 SHA-256
-- **现象**：同一套 1 GiB+ 模型文件在下载、staging 校验、publish 校验、冷加载 `load()`、`initialize()` 及启动检查中被反复整块读入内存算哈希，叠加高并发锁竞争与双权重（`.ort` + `.onnx`）强门槛，频繁卡死和 OOM。
-- **根因**：各层互相不信任且未定义单次验证凭据契约，也缺少性能/内存/哈希次数回归断言。
-- **升格目标（对应 Change `004` / `005`）**：收归 Runtime 统一流式单次哈希，并在 `test-cases/` 中增加模型加载 I/O 次数与离线内存预算回归断言。
-- **状态**：待 `004` / `005` 落地护栏。
+### L-003: 4x–7x Back-to-Back Full-File SHA-256 Hashing on Model Load & Download
+- **Symptom**: Multi-gigabyte embedding models were hashed up to 7 times across download, staging, publish, cold load, and startup checks, causing memory spikes, lock contention, and stalls.
+- **Root Cause**: No single-pass streaming verification contract existed across layers, and no regression test asserted hash pass count or memory bounds.
+- **Guardrail Target (`004` / `005`)**: Enforce single-pass streaming SHA-256 on Runtime load/download, drop redundant `.onnx` requirement in CPU-owned `.ort` mode, and assert budgets in E2E tests.
+- **Status**: Tracked in `CARD-014` & `CARD-018`.
 
-### L-004：早期插件与客户端通过 `cli.exec` / 命令行参数调度，在 Windows 下频发截断与转义故障
-- **现象**：大量业务数据、提示词和参数通过拼装 CLI `argv` 传递，在 Windows 下撞上命令行长度上限（`CreateProcess` 32KB / `cmd` 8KB）、引号转义和 GBK/UTF-8 编码问题，且客户端被迫维护上千行参数拼接表。
-- **根因**：缺少标准的本地 HTTP REST + SSE 契约，只能退而求其次把 CLI 当 RPC 通道用。
-- **升格目标（对应 Change `002` / `005`）**：全面迁移至 OpenAPI 3.1（REST + SSE）与 `rsrs mcp` stdio 桥接；`test-cases/` 必测 Windows 下超长 UTF-8 JSON 请求无截断。
-- **状态**：待 `002` / `005` 落地护栏。
+### L-004: Plugins & Clients Shelling Out via CLI Arguments Failing on Windows
+- **Symptom**: Passing prompts, memories, and batch payloads through `cli.exec` / subprocess argv triggered Windows `CreateProcess` command-line length limits, quote escaping corruption, and encoding issues.
+- **Root Cause**: Missing standard local HTTP REST + SSE contract forced external tools to tunnel RPCs through CLI arguments.
+- **Guardrail Target (`002` / `005`)**: Route all clients and plugins over OpenAPI 3.1 HTTP or `rsrs mcp` stdio, backed by mandatory Windows 100 KB+ UTF-8 JSON E2E tests.
+- **Status**: Baseline `openapi.yaml` live; Windows E2E tracked in `CARD-018`.
 
-### L-005：无规范治理导致 CI Workflow 与一次性脚本泥石流膨胀
-- **现象**：`respire-cli` 累积 23 个 workflow（5,745 行 YAML）与 125 个脚本（3.9 万行），每次救火都新增一条一次性流水线或脚本，既无人维护又拖慢反馈；同时四仓缺少统一 AI 审查配置与独立验收。
-- **根因**：缺少统一的 Change 准入制度、CI 模板收口规范与路径隔离策略。
-- **升格目标（对应 Change `001` / `003` / `004`）**：确立 OpenSpec 准入门禁，收口为标准 4 类流水线 + Monorepo 路径路由 `ci-gate`，禁止保留一次性版本恢复 workflow。
-- **状态**：`001` 起步治理，待 `003` / `004` 收口执行。
+### L-005: Unbounded CI Workflow & One-Off Script Sprawl
+- **Symptom**: `respire-cli` accumulated 23 workflows (5,745 lines of YAML) and 125 scripts (~39k lines) from ad-hoc release recovery patches, slowing PR feedback and hiding real failures.
+- **Root Cause**: No workflow budget cap and no path-filtered Monorepo gate.
+- **Guardrail Target (`003` / `004`)**: Cap `.github/workflows/*.yml` at 5 core pipelines in `check-guardrails.mjs` and route per-app CI via `detect-changes` + `ci-gate`.
+- **Status**: Active in `risense-ai/respire`.
+
+### L-006: Non-English Text Drifting into Docs, Scripts, and Comments
+- **Symptom**: Mixed-language prose across repositories fractured AI Agent prompt adherence and CodeRabbit review consistency.
+- **Root Cause**: No automated scanner prevented non-English prose from being committed outside UI i18n resources.
+- **Guardrail Target (`001` / `004`)**: Enforce Zero-CJK scanning across both `respire-resources` and `respire`, exempting only UI i18n paths.
+- **Status**: Active in `validate-openspec.mjs` and `check-guardrails.mjs`.

@@ -1,4 +1,4 @@
-# Respire 可信身份白名单：用于校验 Evidence 登记与人工审批权限（Fail-Closed）
+# Trusted identities for Evidence registration and Maintainer approvals (Fail-Closed).
 maintainers:
   - luodaoyi
 

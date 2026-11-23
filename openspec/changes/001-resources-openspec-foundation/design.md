@@ -1,63 +1,43 @@
 # Design: 001-resources-openspec-foundation
 
-## 1. SSOT 仓库定位与引用机制
+## 1. SSOT Architecture & Upstream Synchronization
 
-`risense-ai/respire-resources` 对所有研发仓保持**上游只读真相源**关系：
+`risense-ai/respire-resources` acts as the authoritative upstream reference:
 
-- 任何代码仓（闭源 `respire-core`、开源 Monorepo `risense-ai/respire`）不得私自维护第二套全局规范或重复契约副本。
-- `respire` 通过 `contracts/sync.lock.json` 锁定引用的 `respire-resources` commit SHA 与 `openapi.yaml` 校验和，确保构建可 100% 复现。
-- 各代码仓根目录保留精简版 `AGENTS.md`，首行声明继承 `respire-resources/AGENTS.md`，只补充本仓本地命令与特殊边界。
+- Code repositories MUST NOT maintain divergent copies of global policies or hand-edited API contracts.
+- `risense-ai/respire` pins exact synced contract snapshots in `contracts/sync.lock.json` (commit SHA + SHA-256 checksum).
+- Monorepo `AGENTS.md` inherits `respire-resources/AGENTS.md` and only adds repository-specific build and guardrail rules.
 
-## 2. OpenSpec 状态机与强约束闸门
+## 2. OpenSpec Gate State Machine
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Proposed: Spec/Triager Agent 生成 4 件套
-    Proposed --> Approved: Maintainer 拍板 (Milestone + approved 标签)
-    Proposed --> Declined: Maintainer 否决
-    Approved --> Applying: Implementer 在 .worktrees/ 施工
-    Applying --> Verifying: CI 绿灯 + PR 提交
-    Verifying --> Applying: 只读 Verifier 打回修改
-    Verifying --> Archived: Maintainer 终审合并 + Scribe 归档进 specs/
+    [*] --> Proposed: Triager/Spec drafts 4 artifacts
+    Proposed --> Approved: Maintainer adds spec:approved
+    Proposed --> Declined: Maintainer rejects
+    Approved --> Applying: Implementer works in .worktrees/
+    Applying --> Verifying: ci-gate green + PR opened
+    Verifying --> Applying: Read-only Verifier requests fixes
+    Verifying --> Archived: Maintainer merges + Scribe archives to specs/
 ```
 
-- **闸门 1（准入前）**：无 `approved` 状态 Change，禁止 Implementer 建分支改代码；紧急 `hotfix/` 必须在 24 小时内补齐事后 Change 与 `LESSONS.md` 条目。
-- **闸门 2（Issue 强制元数据）**：GitHub Issue 模板要求提供 `Change ID`、`关联 Spec §`、`关联原型路径`、`前置依赖 Issue`、`对应 E2E 用例 ID`；缺项则由 Triager 打 `needs-info` 标签，不排入可开发队列。
+- **Gate 1 (Entry)**: Implementers MUST NOT write product code unless the Change and GitHub Issue carry `spec:approved`. Emergency `hotfix/` PRs require retroactive OpenSpec + `LESSONS.md` records within 24 hours.
+- **Gate 2 (Traceable Metadata)**: Every scheduled Issue MUST carry `<!-- respire-card ... -->` metadata (`id`, `change`, `milestone`, `target_repo`, `depends_on`) and map to OpenSpec `tasks.md` items.
 
-## 3. GitHub 看板、Milestone 与分支保护标准命令
+## 3. English-Only Enforcement & Doc Caps
 
-Agent 在阶段二执行 `T01-05`–`T01-08` 时直接按以下标准配置操作：
+- `process/scripts/validate-openspec.mjs` scans every text file in `respire-resources` (excluding `.git`, `node_modules`, and explicit UI i18n fixture paths) for CJK code points (`\u3000-\u303F`, `\u3400-\u4DBF`, `\u4E00-\u9FFF`, `\uF900-\uFAFF`, `\uFF00-\uFFEF`) and fails with exact `file:line` diagnostics on any hit.
+- Non-archive `.md` files under `openspec/` MUST NOT exceed **400 lines**.
+- `process/templates/coderabbit.yaml` configures `language: en-US`, `profile: assertive`, `request_changes_workflow: true`, and path-specific rules for `apps/core`, `apps/runtime`, `apps/cli`, `apps/client2`, `openspec`, and `.github/workflows`.
 
-```sh
-# 1. 创建组织级 Project 看板（需 gh auth refresh -s project 权限）
-gh project create --owner risense-ai --title "Respire Engineering"
+## 4. GitHub Milestones, Project & Branch Protection
 
-# 2. 为 respire 与 respire-resources 建立一致 Milestone
-for repo in risense-ai/respire-resources risense-ai/respire; do
-  for m in M1-OpenAPI-Migration M2-Monorepo-Merge M3-Guardrails-Slimming M4-E2E-And-Automation; do
-    gh api -X POST "repos/$repo/milestones" -f title="$m"
-  done
-done
-
-# 3. 为 respire-resources 开启 main 分支保护（要求 validate-openspec 通过）
-gh api -X PUT "repos/risense-ai/respire-resources/branches/main/protection" \
-  --input - <<'JSON'
-{
-  "required_status_checks": { "strict": true, "contexts": ["validate-openspec"] },
-  "enforce_admins": false,
-  "required_pull_request_reviews": null,
-  "restrictions": null
-}
-JSON
-```
-
-## 4. 统一审查与文档防膨胀机制
-
-- **`.coderabbit.yaml` 模板升级**：以 `process/templates/coderabbit.yaml` 为唯一标准模板（`assertive` + 路径红线），淘汰旧仓过时的 `chill` 配置。
-- **单文件行数与零依赖校验**：`process/scripts/validate-openspec.mjs` 仅用 Node 内置模块校验 `openspec/` 下非归档 Markdown `<= 400` 行及 OpenAPI 3.1 结构。
+- **Milestones & Labels**: `M1`–`M6` align 1:1 with OpenSpec `001`–`006` across `respire-resources` and `respire`.
+- **Org Project v2 Sync**: `process/scripts/sync-project-board.mjs` creates/updates `"Respire Transformation (001-006)"` idempotently once the Maintainer grants `project,read:project` via `gh auth refresh -s project,read:project`.
+- **Branch Protection**: `respire-resources` `main` requires `validate-openspec` (`strict: true`); `respire` `main` requires `ci-gate` (`strict: true`).
 
 ## 5. Risks & Rollback
 
-- **风险**：流程过重可能拖慢微小改动（如单行 typo 或简单修复）。
-- **缓解**：允许“轻量 bugfix”仅关联已有 Spec `§` 与回归测试记录，无需新建整套 Proposal；新功能、跨模块重构、接口变更、UI 改版强制走完整 OpenSpec Change。
-- **回滚**：本 Change 仅作用于治理规范与 GitHub 元数据配置，不影响既有生产代码与发布链。
+- **Risk**: Heavy governance slows one-line typo or trivial doc fixes.
+- **Mitigation**: Trivial bugfixes may reference existing canonical specs without creating a new Change directory; architectural/contract/UI changes always require a Change.
+- **Rollback**: Changes here govern workflow metadata and CI checks without altering runtime binaries.

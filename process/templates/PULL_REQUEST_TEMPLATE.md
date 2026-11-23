@@ -1,22 +1,24 @@
-## 变更摘要
+## Summary
 
-- **关联 Change ID / Issue**: `Fixes #...`（Change: `00X-...`）
-- **影响组件**: `runtime` / `cli` / `client2` / `contracts` / `resources`
+- **Linked Issue / Change**: `Fixes <owner/repo>#...` (Change: `00X-...`)
+- **Milestone Attached**: `MX: ...` (PR MUST share the Issue's Milestone)
+- **Affected Component(s)**: `core` / `runtime` / `cli` / `client2` / `contracts` / `resources`
 
-## 行为前后对比（Before / After）
+## Before / After Behavior
 
 - **Before**:
 - **After**:
 
-## 契约与架构红线自检
+## Contract, Guardrail & Language Checklist
 
-- [ ] 若变更接口，已先更新 `contracts/runtime-api/openapi.yaml` 并重新生成 `packages/runtime-sdk-*`
-- [ ] 若变更 UI，已同步更新 `prototypes/` 并确认 PR UI Preview 截图/录屏正常
-- [ ] 无新增跨 `apps/*` 依赖、无禁止引入的 SQLite/服务端库、无 `>600` 行新文件
+- [ ] Strictly English-only outside dedicated UI i18n files (Zero-CJK CI clean)
+- [ ] If Runtime API changed: `contracts/runtime-api/openapi.yaml` and `packages/runtime-sdk-*` updated first
+- [ ] If Client2 UI changed: `prototypes/` synced and PR UI Preview verified
+- [ ] No forbidden dependencies, no cross-`apps/*` imports, no new file `> 600` lines
 
-## 本地与独立验证证据
+## Verification Evidence
 
-请粘贴实际运行的命令与关键输出（禁止写“应该通过”，未实测请如实注明原因）：
+Paste exact commands executed and observed outputs (mark unrun environments honestly as `UNTESTED`):
 
 ```text
 <command & output>

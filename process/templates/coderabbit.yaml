@@ -1,9 +1,9 @@
 # yaml-language-server: $schema=https://storage.googleapis.com/coderabbit_public_assets/schema.v2.json
-# Respire 统一 CodeRabbit 审查模板（分发至 respire 与 respire-core）
-language: zh-CN
+# Shared CodeRabbit review profile for risense-ai/respire and respire-core.
+language: en-US
 tone_instructions: >-
-  优先检查逻辑正确性、四层架构边界越界、锁粒度、数据丢失与安全隐患。
-  用简洁中文指出具体后果与最小修改方案，避免琐碎格式说教。
+  Prioritize correctness, four-layer boundary integrity, lock scope, data loss,
+  security, and English-only compliance. Cite concrete consequences and minimal fixes.
 
 reviews:
   profile: assertive
@@ -18,42 +18,51 @@ reviews:
     - '!**/packages/runtime-sdk-*/**'
 
   path_instructions:
+    - path: '**/*'
+      instructions: |
+        1. Strictly enforce English-only docs, comments, identifiers, and strings across the repository; flag any CJK characters outside dedicated UI i18n locale/fixture paths as blocking defects.
+        2. Enforce single-file maintainability caps (<= 600 lines for code files, <= 400 lines for OpenSpec docs).
+
+    - path: 'apps/core/**/*.rs'
+      instructions: |
+        1. Keep Core purely in-memory: forbid filesystem, SQLite, keyring, HTTP, or network I/O crates/calls in production paths.
+        2. Preserve C ABI and Wire DTO forward compatibility (unknown fields ignored).
+        3. Never add new `.unwrap()` or `.expect()` in non-test Rust code.
+
     - path: 'apps/runtime/**/*.rs'
       instructions: |
-        1. 严禁新增 `.unwrap()` 或 `.expect()`。
-        2. 禁止在冷加载/下载链路重复计算多次 SHA-256；禁止用 `store.all()` 做计数。
-        3. 禁止引入 CLI Clap 二次语法树、TTY 交互提示或宿主 IDE 注入逻辑。
-        4. 新建或拆分后的 Rust 文件超过 600 行应要求继续拆分。
-        5. 新增 HTTP 路由必须与 `contracts/runtime-api/openapi.yaml` 保持一致。
+        1. Never add `.unwrap()` or `.expect()` in non-test Rust code.
+        2. Allow at most 1 streaming SHA-256 pass during model download/load; forbid `store.all()` for counting.
+        3. Forbid Clap secondary CLI parsers, TTY prompts, or IDE prompt injection logic inside Runtime.
+        4. Ensure every HTTP route stays synchronized with `contracts/runtime-api/openapi.yaml`.
 
     - path: 'apps/cli/**/*.rs'
       instructions: |
-        1. `apps/cli` 是超薄客户端，严禁引入 `storage` / `core-sdk` / `app` / `axum` 等服务端依赖或直连业务 SQLite。
-        2. 严禁在模型下载、非活跃模型卸载或配置写入路径停止 Runtime 或写 `Paused`。
-        3. 与 Runtime 通信只能通过 `capabilities` 能力位协商，严禁比较版本号字符串。
+        1. `apps/cli` MUST stay an ultra-thin client: forbid importing `storage`, `core-sdk`, `app`, `axum`, or `apps/runtime`/`apps/core` crates.
+        2. Never stop Runtime or write `Paused` during model downloads, non-active uninstalls, config updates, or read-only commands.
+        3. Negotiate strictly via `capabilities`, never by comparing version strings.
 
     - path: 'apps/client2/**/*.go'
       instructions: |
-        1. 严禁在 `go.mod` 引入 `go-sqlite3` 或任何 SQLite 驱动。
-        2. 严禁在 Go 宿主层重写账户、空间、模型下载或迁移状态机，也禁止拼接 `cli.exec` 参数表。
-        3. 检查 goroutine 取消退出路径与 HTTP 超时控制（防止下载/SSE 泄漏）。
+        1. Strictly forbid importing `go-sqlite3` or any SQLite driver in `go.mod`.
+        2. Forbid rewriting Go-side account, space, model, or migration state machines or `cli.exec` argv tables.
+        3. Verify goroutine cancellation, HTTP header/read stall timeouts, and clean resource disposal.
 
     - path: 'apps/client2/**/frontend/**/*.{js,html,css}'
       instructions: |
-        1. 所有用户可见文本必须同时支持中英文（`i18n`），控件尺寸使用 `rem`（禁止写死 `px`）。
-        2. 禁止在全局定时器中恢复高频全量状态或 `tree-cure` 轮询；长任务进度必须消费 SSE 或轻量接口。
+        1. Keep all user-visible text routed through `i18n` helpers (Chinese text belongs strictly in dedicated i18n bundles) and use `rem` sizing instead of fixed `px`.
+        2. Never re-introduce 700ms `/api/state` or 60s `tree-cure` polling; consume SSE streams for async tasks.
 
     - path: 'openspec/**/*.md'
       instructions: |
-        1. 非归档 Markdown 文件严禁超过 400 行。
-        2. 增量 `spec.md` 必须包含 `MUST`/`SHALL` 与 `#### Scenario:`（GIVEN/WHEN/THEN）。
-        3. 引用文档用 `§节号` 或文件路径，禁止硬编码源码行号锚点。
+        1. Keep non-archive files <= 400 lines, strictly in English.
+        2. Require `MUST`/`SHALL` requirements and `#### Scenario:` (`GIVEN`/`WHEN`/`THEN`) blocks in delta `spec.md` files.
+        3. Reference `§` sections or symbol names rather than brittle source line numbers.
 
     - path: '.github/workflows/**'
       instructions: |
-        1. `permissions` 必须最小化，仅申请实际所需权限。
-        2. 涉及执行未审核 PR 代码的预览任务（如 UI Preview）严禁持有仓库写权限或高权限 Token。
-        3. 严禁放宽架构护栏检查、OpenAPI 破坏性检查或合并门禁。
+        1. Minimize `permissions` scopes; any job executing untrusted PR code (e.g., `ui-preview` `record`) MUST hold zero write permissions.
+        2. Never weaken architecture guardrails, Zero-CJK checks, `oasdiff` checks, or `ci-gate`.
 
   auto_review:
     enabled: true
@@ -78,7 +87,7 @@ reviews:
   pre_merge_checks:
     title:
       mode: warning
-      requirements: '使用 Conventional Commits 格式：`type(scope): subject`'
+      requirements: 'Use Conventional Commits: `type(scope): subject` (English only)'
     description:
       mode: warning
 

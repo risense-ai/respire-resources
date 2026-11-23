@@ -1,45 +1,50 @@
 # respire-resources
 
-**Respire 项目的单一事实源（SSOT）**：集中托管跨仓的 OpenSpec 规范、接口契约（OpenAPI 3.1 + Core ABI）、高保真 HTML 原型、语言无关的 E2E 验收用例，以及面向多 AI Agent 协同的研发治理体系。
+**Single Source of Truth (SSOT) for Respire**: centralized home for cross-component OpenSpec specifications, machine-readable contracts (OpenAPI 3.1 + Core ABI), high-fidelity HTML prototypes, language-agnostic E2E test suites, and multi-agent engineering governance.
 
-> **其他 AI Agent 刚进仓库？** 请直接从 **[openspec/AGENT_EXECUTION_GUIDE.md](openspec/AGENT_EXECUTION_GUIDE.md)** 与 **[process/roles/README.md](process/roles/README.md)** 开始阅读，内置冷启动 6 步协议与可直接复制的各阶段派单提示词。
+> **New AI Agent entering the workspace?** Start with **[openspec/AGENT_EXECUTION_GUIDE.md](openspec/AGENT_EXECUTION_GUIDE.md)** and **[process/roles/README.md](process/roles/README.md)**, then run `node process/scripts/respire-process.mjs next`.
 
 ---
 
-## 三仓协同拓扑（已就绪）
+## Two-Repository Open-Source Topology
 
-| 仓库 | GitHub 地址 | 可见性 | 核心职责与边界 |
+| Repository | GitHub | Visibility | Responsibilities & Hard Boundaries |
 | --- | --- | --- | --- |
-| **`respire-resources`**（本仓） | `risense-ai/respire-resources` | Public | OpenSpec 规范、OpenAPI 3.1 / Core ABI 契约、HTML 原型、E2E 测试集、流程与角色指南 |
-| **`respire`**（新开源 Monorepo） | `risense-ai/respire` | Public | 承载 `apps/runtime`、`apps/cli`、`apps/client2` 与生成 SDK（物理隔离构建 + 路径路由 CI） |
-| **`respire-core`** | `risense-ai/respire-core` | Private | 纯内存核心算法与推理引擎（C ABI）；禁止文件/数据库/网络 I/O |
+| **`respire-resources`** (this repo) | `risense-ai/respire-resources` | Public | OpenSpec specs, OpenAPI 3.1 / Core ABI contracts, HTML prototypes, E2E suites, role playbooks, and orchestration scripts |
+| **`respire`** (open-source Monorepo) | `risense-ai/respire` | Public | Hosts `apps/core`, `apps/runtime`, `apps/cli`, `apps/client2`, and generated `packages/runtime-sdk-*` with isolated manifests and path-filtered CI |
 
-> 历史过渡：`risense-ai/respire-back` 为早先归档的历史快照；`respire-runtime`、`respire-cli`、`respire-client2` 在执行 `003` 导入后冻结代码开发，仅作为老版本更新与 NPM 分发的自动镜像目标。
-
----
-
-## 目录导航
-
-- **[openspec/AGENT_EXECUTION_GUIDE.md](openspec/AGENT_EXECUTION_GUIDE.md)** — 多 Agent 冷启动执行协议与阶段提示词
-- **[openspec/ROADMAP.md](openspec/ROADMAP.md)** — 六阶段改造总路线图与依赖 DAG
-- **[openspec/config.yaml](openspec/config.yaml)** — OpenSpec 规范与校验配置
-- **[openspec/specs/](openspec/specs/README.md)** — 已验收归档的系统权威规范正文
-- **六份 OpenSpec Change 规范包（`001`–`006`）**：
-  1. [001-resources-openspec-foundation](openspec/changes/001-resources-openspec-foundation/proposal.md) — OpenSpec 准入体系、GitHub Project 看板与仓库模板基建
-  2. [002-runtime-openapi-v1-migration](openspec/changes/002-runtime-openapi-v1-migration/proposal.md) — Runtime OpenAPI 3.1（REST + SSE）全量契约与旧 RPC 平滑过渡
-  3. [003-monorepo-merge-and-release-bridge](openspec/changes/003-monorepo-merge-and-release-bridge/proposal.md) — 三仓过滤合入、路径路由 `ci-gate`、独立 Tag 发版与老仓/NPM 自动镜像
-  4. [004-ci-guardrails-and-code-slimming](openspec/changes/004-ci-guardrails-and-code-slimming/proposal.md) — CI 防退化架构护栏与四端代码深度瘦身清单
-  5. [005-prototypes-and-e2e-acceptance](openspec/changes/005-prototypes-and-e2e-acceptance/proposal.md) — 16 页高保真 HTML 原型、黑盒 E2E（含 Windows 专项）与 Client2 PR 自动录屏预览
-  6. [006-multi-agent-automation-workflow](openspec/changes/006-multi-agent-automation-workflow/proposal.md) — 六角色写验分离、`respire-process` 确定性状态机与 `LESSONS.md` 夜间审计
-- **[contracts/](contracts/README.md)** — 唯一接口契约目录（[OpenAPI 3.1](contracts/runtime-api/openapi.yaml)、[Core ABI](contracts/core-abi/README.md)）
-- **[prototypes/](prototypes/README.md)** — 高保真 HTML 原型、共享 Design Tokens 与 Mock Runtime 数据规范
-- **[test-cases/](test-cases/README.md)** — 黑盒 E2E 验收场景与 Windows 专项回归用例
-- **[process/](process/README.md)** — [六角色指南](process/roles/README.md)、统一模板与校验脚本
-- **[AGENTS.md](AGENTS.md)** & **[LESSONS.md](LESSONS.md)** — 全局开发宪法与事故护栏台账
+> **Transition Note**: `risense-ai/respire-core` is transitioning from private to open-source under `apps/core/` inside `risense-ai/respire` after a pre-open-source secret/license audit. Historical repositories (`respire-runtime`, `respire-cli`, `respire-client2`) freeze source writes once imported in `003` and act solely as legacy release/NPM distribution mirrors; `risense-ai/respire-back` holds the earlier archived snapshot.
 
 ---
 
-## 本地校验
+## Policy Highlight: Strict English-Only Code & Docs
+
+All documentation, specifications, source code, comments, scripts, workflows, commit messages, PRs, and Issues MUST be written in **English**. Non-English / CJK text is permitted **strictly** inside dedicated UI i18n translation files and i18n test fixtures, enforced automatically by CI (`validate-openspec.mjs` and `check-guardrails.mjs`).
+
+---
+
+## Navigation
+
+- **[openspec/AGENT_EXECUTION_GUIDE.md](openspec/AGENT_EXECUTION_GUIDE.md)** — Cold-start 6-step Agent execution protocol & dispatch prompts
+- **[openspec/ROADMAP.md](openspec/ROADMAP.md)** — Master `001`–`006` roadmap, dependency DAG, and 20-card Issue table
+- **[openspec/config.yaml](openspec/config.yaml)** — OpenSpec schema rules and repository metadata
+- **[openspec/specs/](openspec/specs/README.md)** — Canonical archived specifications
+- **OpenSpec Change Packages (`001`–`006`)**:
+  1. [001-resources-openspec-foundation](openspec/changes/001-resources-openspec-foundation/proposal.md) — OpenSpec governance, English-only gate, Milestones/Labels, branch protection
+  2. [002-runtime-openapi-v1-migration](openspec/changes/002-runtime-openapi-v1-migration/proposal.md) — OpenAPI 3.1 (REST + SSE), SDK codegen, legacy JSON-RPC bridge, Windows plugin migration
+  3. [003-monorepo-merge-and-release-bridge](openspec/changes/003-monorepo-merge-and-release-bridge/proposal.md) — Open-source `apps/core` + `runtime`/`cli`/`client2` monorepo merge, path-filtered CI, and legacy Release Fan-Out
+  4. [004-ci-guardrails-and-code-slimming](openspec/changes/004-ci-guardrails-and-code-slimming/proposal.md) — Anti-regression CI guardrails and 60%+ redundancy elimination across all 4 components
+  5. [005-prototypes-and-e2e-acceptance](openspec/changes/005-prototypes-and-e2e-acceptance/proposal.md) — 16 HTML prototypes, black-box E2E suite (with Windows checks), and Client2 PR UI Preview
+  6. [006-multi-agent-automation-workflow](openspec/changes/006-multi-agent-automation-workflow/proposal.md) — Six-role Maker-Checker workflow, `respire-process` CLI, Bot Evidence, and `LESSONS.md` audits
+- **[contracts/](contracts/README.md)** — Canonical API & ABI contracts ([OpenAPI 3.1](contracts/runtime-api/openapi.yaml), [Core ABI](contracts/core-abi/README.md))
+- **[prototypes/](prototypes/README.md)** — High-fidelity HTML prototypes, shared design tokens, and Mock Runtime server
+- **[test-cases/](test-cases/README.md)** — Black-box E2E scenarios and Windows regression suite
+- **[process/](process/README.md)** — [Role playbooks](process/roles/README.md), templates, and orchestration scripts
+- **[AGENTS.md](AGENTS.md)** & **[LESSONS.md](LESSONS.md)** — Global AI engineering constitution and lessons ledger
+
+---
+
+## Local Validation
 
 ```sh
 node process/scripts/validate-openspec.mjs

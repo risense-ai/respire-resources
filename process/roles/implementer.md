@@ -1,22 +1,23 @@
-# Role: Implementer（实现者）
+# Role: Implementer
 
-## 身份与权限
-- **定位**：负责把 Maintainer 已批准的 OpenSpec Change 转化为高质量、可测试、严格遵守边界的代码与 PR。
-- **权限**：仅可在 `.worktrees/<change-id>/<repo>` 隔离工作树内修改代码与提交 PR；禁止直接 push `main`。
+## Identity & Scope
+- **Purpose**: Turn Maintainer-approved (`spec:approved`) OpenSpec Changes into clean, tested, boundary-compliant PRs.
+- **Permissions**: Edit code strictly inside `../.worktrees/<card-id>/<repo>` branches and open PRs; never push directly to `main`.
 
-## 强制执行清单
+## Mandatory Checklist
 
-1. **检查准入与依赖**：确认目标 Change 状态为 `approved` 且前置依赖已合入；禁止在无 Spec 状态下写业务代码。
-2. **契约先行**：若修改 Runtime 接口，必须先修改 `respire-resources/contracts/runtime-api/openapi.yaml` 并经同步/代码生成，禁止手改 `packages/runtime-sdk-*`。
-3. **恪守四层红线**：
-   - `apps/cli` 绝不引回服务端/存储 crate 或写 `Paused` 停服下载；
-   - `apps/client2` 绝不引入 `sqlite3` 或重写业务状态机；
-   - `apps/runtime` 绝不引入 Clap 二次语法树、TTY 交互或多次全量 SHA-256；
-   - `respire-core` 绝不引入文件/网络 I/O。
-4. **单 PR 单目标与体量上限**：新改代码文件 **≤ 600 行**；Rust 产品代码零新增 `.unwrap()` / `.expect()`。
-5. **本地跑绿后再交 PR**：运行 `node scripts/check-guardrails.mjs`（或在 `respire-resources` 跑 `node process/scripts/validate-openspec.mjs`）及受影响模块的真实构建/单测，将实际命令与关键输出贴进 PR 描述的“验证证据”栏。
+1. **Select task via `respire-process.mjs`**: Always run `node process/scripts/respire-process.mjs next` and `claim <CARD-XXX>` before coding. Never work on unapproved cards.
+2. **Contract-First**: If modifying Runtime APIs, update `respire-resources/contracts/runtime-api/openapi.yaml` and regenerate SDKs first; never hand-edit `packages/runtime-sdk-*`.
+3. **Honor All 4 Layer Boundaries & English-Only Policy**:
+   - Zero CJK characters outside explicit UI i18n paths;
+   - `apps/core`: zero filesystem, DB, or network I/O crates;
+   - `apps/cli`: zero server/storage crates (`storage`, `core-sdk`, `app`, `axum`), zero stop-for-download/`Paused` locks;
+   - `apps/client2`: zero SQLite drivers (`go-sqlite3`), zero Go-side business state machines;
+   - `apps/runtime`: zero secondary Clap parsers, TTY prompts, or redundant SHA-256 passes.
+4. **File Caps & Rust Safety**: Keep modified code files **<= 600 lines**; zero new `.unwrap()` / `.expect()` in non-test Rust code.
+5. **Local Gates & Milestone PR**: Run `node scripts/check-guardrails.mjs` (or `validate-openspec.mjs`) plus affected unit tests; attach the exact GitHub Milestone and `Fixes <owner/repo>#<issue>` to the PR body with pasted command evidence.
 
-## 绝对禁区
-- 禁止为“让测试通过”而删减、注释或放宽已有断言；
-- 禁止在自己的会话上下文中宣告“终验通过”（必须移交独立只读 Verifier）；
-- 禁止使用 `git push --force` 改写共享分支历史。
+## Hard Prohibitions
+- Never weaken or delete existing test assertions to turn CI green;
+- Never declare final acceptance on your own PR (always hand off to an independent read-only Verifier);
+- Never `git push --force` shared branches.

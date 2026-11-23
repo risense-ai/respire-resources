@@ -1,52 +1,61 @@
 # Design: 003-monorepo-merge-and-release-bridge
 
-## 1. Monorepo 目录与物理隔离拓扑
+## 1. Monorepo Directory & Isolation Layout
 
 ```text
 risense-ai/respire/
 ├── .github/workflows/
-│   ├── ci.yml                # detect-changes -> 按路径跑各端 CI -> ci-gate 聚合
-│   ├── verify.yml            # 架构护栏 / OpenAPI 同步锁 / 独立核验
-│   ├── e2e.yml               # 合入 main 或发版前拉取 respire-resources 跑全链路 E2E
-│   └── release.yml           # 按 Tag 前缀独立发版 + 老仓/NPM 镜像 Fan-Out
+│   ├── ci.yml                # detect-changes -> core/runtime/cli/client2 CI -> ci-gate
+│   ├── verify.yml            # guardrails / Zero-CJK / sync.lock.json checks
+│   ├── e2e.yml               # cross-app E2E from respire-resources/test-cases
+│   └── release.yml           # component-prefixed tag builds + legacy/NPM Release Fan-Out
 ├── apps/
-│   ├── runtime/              # 独立 Cargo.toml + Cargo.lock
-│   ├── cli/                  # 独立 Cargo.toml + Cargo.lock (禁止路径依赖 apps/runtime)
-│   └── client2/              # 独立 go.mod + go.sum
-├── packages/                 # 自动生成自 respire-resources openapi.yaml (禁手改)
-├── contracts/                # sync.lock.json 锁定 respire-resources commit + SHA-256
+│   ├── core/                 # Independent Cargo.toml + Cargo.lock (open-source pure engine)
+│   ├── runtime/              # Independent Cargo.toml + Cargo.lock
+│   ├── cli/                  # Independent Cargo.toml + Cargo.lock (never depends on runtime/core)
+│   └── client2/              # Independent go.mod + go.sum
+├── packages/                 # Auto-generated runtime-sdk-{rs,go,ts} (never hand-edited)
+├── contracts/                # sync.lock.json + synced openapi.yaml
 └── scripts/check-guardrails.mjs
 ```
 
-## 2. 带过滤的历史合仓操作步骤（`git filter-repo`）
+**Why never share a top-level Cargo Workspace?** A shared `Cargo.toml` ties `apps/core`, `apps/runtime`, and `apps/cli` into one lockfile and dependency graph, breaking independent builds and inviting accidental cross-layer imports.
 
-在隔离临时目录（例如 `D:\tmp\monorepo-import\`）中操作，**严禁改动本地干净主副本**：
+## 2. Filtered History Import (`git filter-repo`)
 
-1. **导入 `respire-runtime` → `apps/runtime/`**：
-   - `git clone --no-local respire-runtime imp-runtime && cd imp-runtime`
-   - `git filter-repo --to-subdirectory-filter apps/runtime --invert-paths --path contracts/ --path .github/workflows/`
-2. **清洗并导入 `respire-cli` → `apps/cli/`（直接丢弃 5.4 万行遗留服务端与 23 个历史 workflow）**：
-   - `git clone --no-local respire-cli imp-cli && cd imp-cli`
-   - 过滤掉以下已知历史包袱目录与文件后再重定位至 `apps/cli/`：
-     - 遗留服务端 6 个 crate：`runtime/`、`crates/core-sdk/`、`crates/app/`、`crates/app-domain/`、`crates/storage/`、`crates/crypto/`
-     - 14 个 `server` 门控与冗余文件：`crates/commands/src/{admission,bench,engine,lexical,lexical_cache,model_install,network,recall_select,rpc_serve,rpc_worker,runtime_http,skill,sync_flow,util}.rs`、`crates/commands/src/model_progress.rs`、`crates/commands/src/model_granite.rs`、`cli/src/network.rs`
-     - 重复契约与废旧 CI：`contracts/`、`.github/workflows/`、`.worktrees/`
-     - 执行 `git filter-repo --to-subdirectory-filter apps/cli ...`
-3. **导入 `respire-client2` → `apps/client2/`**：
-   - `git clone --no-local respire-client2 imp-client2 && cd imp-client2`
-   - `git filter-repo --to-subdirectory-filter apps/client2 --invert-paths --path .github/workflows/ --path .worktrees/`
-4. **依次合并入 `respire` 新分支（`--allow-unrelated-histories`）**，检查无误后修复各端相对路径引用（如指向根目录 `contracts/` 与 `packages/`）并开 PR 合并。
+Run inside isolated temporary clones (never modify clean local master clones):
 
-## 3. Release Fan-Out 镜像产物矩阵（兼容老仓与 NPM）
+1. **`respire-runtime` -> `apps/runtime/`**:
+   `git filter-repo --to-subdirectory-filter apps/runtime --invert-paths --path contracts/ --path .github/workflows/`
+2. **`respire-cli` -> `apps/cli/`** (drop ~54.5k legacy server lines & 23 workflows during import):
+   Invert-exclude `runtime/`, `crates/{core-sdk,app,app-domain,storage,crypto}/`, the 14 `server`-gated files (`crates/commands/src/{admission,bench,engine,lexical,lexical_cache,model_install,network,recall_select,rpc_serve,rpc_worker,runtime_http,skill,sync_flow,util}.rs`), `crates/commands/src/{model_progress,model_granite}.rs`, `cli/src/network.rs`, `contracts/`, `.github/workflows/`, and `.worktrees/`, then `--to-subdirectory-filter apps/cli`.
+3. **`respire-client2` -> `apps/client2/`**:
+   `git filter-repo --to-subdirectory-filter apps/client2 --invert-paths --path .github/workflows/ --path .worktrees/`
+4. **`respire-core` -> `apps/core/`** (ONLY after `CARD-002` secret/license audit passes):
+   Import pure algorithm crates into `apps/core/` and retire closed-source binary SDK tarball/cache ceremony (`build-core-sdk`, `fetch-core-sdk`, `private-sdk-cache`).
 
-| Monorepo Tag | 新仓 Release | 必须镜像的老仓库及产物清单 |
+## 3. Path-Filtered CI & `ci-gate`
+
+- `detect-changes` outputs booleans `core`, `runtime`, `cli`, `client2`, `contracts`:
+  - `apps/core/**` triggers `core-ci` AND `runtime-ci` (since Runtime links Core), while `cli-ci` and `client2-ci` skip in 0s;
+  - `apps/client2/**` triggers ONLY `client2-ci` (plus `ui-preview` in `005`);
+  - `apps/cli/**` triggers ONLY `cli-ci`;
+  - `apps/runtime/**` triggers ONLY `runtime-ci`;
+  - `contracts/**` or `packages/**` triggers affected component checks + `contract-check`.
+- `ci-gate` (`if: always()`) requires every dependency to finish `success` or `skipped` and serves as the sole branch protection status check.
+
+## 4. Component Tag Releases & Legacy/NPM Fan-Out
+
+| Tag Prefix | Monorepo Release | Legacy Mirrors & Package Registries |
 | --- | --- | --- |
-| **`runtime-vX.Y.Z`** | `risense-ai/respire` (`runtime-vX.Y.Z`) | `risense-ai/respire-runtime` (`vX.Y.Z`)：8 目标 `rsrs-runtime-<triple>.tar.gz` 与 `runtime-build-<triple>.json`（保持 schema-2 字段 `archive_sha256` / `binary_sha256`） |
-| **`cli-vX.Y.Z`** | `risense-ai/respire` (`cli-vX.Y.Z`) | 发布 NPM 包 `rsrs-cli` 及 8 平台子包（`@rsrsai/{linux-x64-gnu,linux-x64,linux-arm64-gnu,linux-arm64,macos-x64,macos-arm64,win32-x64,win32-arm64}`）+ 镜像至 `risense-ai/respire-cli` (`vX.Y.Z`)；保留 `model-bge-m3-ort-v1` |
-| **`client2-vX.Y.Z`** | `risense-ai/respire` (`client2-vX.Y.Z`) | `risense-ai/respire-client2` (`vX.Y.Z`)：`respire-windows-{amd64,arm64}.exe`、`respire-windows-{amd64,arm64}-setup.exe`、`respire-linux-{amd64,arm64}.tar.gz`、macOS `.dmg`/`.tar.gz`、`SHA256SUMS`、`client-updates.json`、`release-notes.md` |
+| **`runtime-vX.Y.Z`** | `risense-ai/respire` (`runtime-vX.Y.Z`) | Mirror 8 target `.tar.gz` + `runtime-build-<triple>.json` (schema-2) to `risense-ai/respire-runtime` (`vX.Y.Z`) |
+| **`cli-vX.Y.Z`** | `risense-ai/respire` (`cli-vX.Y.Z`) | Publish `rsrs-cli` + `@rsrsai/{linux-x64-gnu,linux-x64,linux-arm64-gnu,linux-arm64,macos-x64,macos-arm64,win32-x64,win32-arm64}` to NPM + mirror to `risense-ai/respire-cli` (`vX.Y.Z`); preserve `model-bge-m3-ort-v1` |
+| **`client2-vX.Y.Z`** | `risense-ai/respire` (`client2-vX.Y.Z`) | Mirror 6-platform installers/archives, `SHA256SUMS`, `client-updates.json`, `release-notes.md` to `risense-ai/respire-client2` (`vX.Y.Z`) |
 
-## 4. Risks & Rollback
+Updaters in `apps/cli` (`runtime_fetch.rs`) and `apps/client2` (`releases.go`) switch to **new Monorepo prefixed tags primary, legacy repos fallback** before legacy mirrors are eventually retired.
 
-- **风险**：CLI 移除服务端 crate 后，原本依赖 `server` feature 的测试会编译失败。
-- **缓解**：合入 PR 中将原 `server` 测试拆分为调用独立 `rsrs-runtime` 契约 Mock 测试；在 `003` 完成前三个老仓库保持代码可用但冻结新合并。
-- **回滚**：导入操作通过独立 PR 合入 `respire`，老仓库原始提交历史丝毫未改。
+## 5. Risks & Rollback
+
+- **Risk**: Secret or third-party license residue in `respire-core` history prior to open-sourcing.
+- **Mitigation**: Gate `apps/core` import on `CARD-002` full secret/license scan (`gitleaks`/license check) before merging or opening `respire-core` history.
+- **Rollback**: Legacy repositories remain frozen and intact throughout migration.

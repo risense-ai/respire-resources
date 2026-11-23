@@ -1,13 +1,12 @@
 #!/usr/bin/env node
-/**
- * 零外部依赖的 OpenSpec & OpenAPI 基础门禁校验脚本。
- * 校验内容：
- * 1. openspec/config.yaml 与 openspec/ROADMAP.md 存在；
- * 2. 每个非 archive 的 Change 目录包含 proposal.md、design.md、tasks.md 及至少一份 specs/<domain>/spec.md；
- * 3. 每份增量 spec.md 包含 Delta 标题、MUST/SHALL 约束及 #### Scenario:（含 GIVEN/WHEN/THEN）；
- * 4. contracts/runtime-api/openapi.yaml 声明 openapi: 3.1.0、info: 与 paths:；
- * 5. openspec/ 下非归档 Markdown 文件行数 <= 400 行。
- */
+// Zero-dependency OpenSpec, OpenAPI 3.1, and Zero-CJK policy validator.
+// Verifies:
+// 1. openspec/config.yaml, openspec/ROADMAP.md, AGENTS.md, and LESSONS.md exist;
+// 2. Every non-archive Change directory contains proposal.md, design.md, tasks.md, and >= 1 specs/<domain>/spec.md;
+// 3. Each delta spec.md contains a Delta heading, MUST/SHALL keywords, and >= 1 Scenario (with GIVEN/WHEN/THEN);
+// 4. contracts/runtime-api/openapi.yaml declares openapi: 3.1.0, info:, and paths:;
+// 5. Non-archive Markdown files under openspec/ are <= 400 lines;
+// 6. Zero CJK characters anywhere in tracked/text files outside dedicated UI i18n paths.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -15,10 +14,36 @@ import path from "node:path";
 const root = process.cwd();
 const errors = [];
 
+const CJK_REGEX = /[\u3000-\u303F\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF\uFF00-\uFFEF]/;
+const I18N_EXEMPT_REGEXES = [
+  /(^|\/)i18n(\/|\.js$|\.ts$|\.json$)/,
+  /(^|\/)locales\//,
+  /_zh(-CN|-TW)?\.(json|js|ts)$/,
+  /\.zh(-CN|-TW)?\.(json|js|ts)$/,
+  /^test-cases\/fixtures\/i18n\//,
+];
+const TEXT_EXTENSIONS = new Set([
+  ".md",
+  ".yml",
+  ".yaml",
+  ".mjs",
+  ".js",
+  ".ts",
+  ".json",
+  ".html",
+  ".css",
+  ".sh",
+  ".ps1",
+  ".txt",
+  ".toml",
+  ".rs",
+  ".go",
+]);
+
 function checkExists(relPath) {
   const full = path.join(root, relPath);
   if (!fs.existsSync(full)) {
-    errors.push(`缺失必需文件: ${relPath}`);
+    errors.push(`Missing required file: ${relPath}`);
     return null;
   }
   return full;
@@ -38,25 +63,46 @@ function walkMarkdown(dir, results = []) {
   return results;
 }
 
-// 1. 核心配置与路线图
+function walkAllTextFiles(dir, results = []) {
+  if (!fs.existsSync(dir)) return results;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name === ".git" || entry.name === "node_modules" || entry.name === ".worktrees") continue;
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      walkAllTextFiles(full, results);
+    } else if (entry.isFile()) {
+      const ext = path.extname(entry.name).toLowerCase();
+      if (TEXT_EXTENSIONS.has(ext) || entry.name === ".gitattributes" || entry.name === ".gitignore") {
+        results.push(full);
+      }
+    }
+  }
+  return results;
+}
+
+function isExemptI18nPath(relUnix) {
+  return I18N_EXEMPT_REGEXES.some((re) => re.test(relUnix));
+}
+
+// 1. Core governance files
 checkExists("AGENTS.md");
 checkExists("LESSONS.md");
 checkExists("openspec/config.yaml");
 checkExists("openspec/ROADMAP.md");
 
-// 2. 校验 OpenSpec Changes
+// 2. OpenSpec Changes validation
 const changesDir = path.join(root, "openspec", "changes");
 let changeCount = 0;
 
 if (!fs.existsSync(changesDir)) {
-  errors.push("缺失目录: openspec/changes");
+  errors.push("Missing directory: openspec/changes");
 } else {
   const entries = fs
     .readdirSync(changesDir, { withFileTypes: true })
     .filter((d) => d.isDirectory() && d.name !== "archive");
 
   if (entries.length === 0) {
-    errors.push("openspec/changes 下未找到任何 Change 目录");
+    errors.push("No active Change directories found under openspec/changes");
   }
 
   for (const dir of entries) {
@@ -78,7 +124,7 @@ if (!fs.existsSync(changesDir)) {
     }
 
     if (specFiles.length === 0) {
-      errors.push(`${changeRel} 缺少至少一份 specs/<domain>/spec.md`);
+      errors.push(`${changeRel} is missing at least one specs/<domain>/spec.md`);
       continue;
     }
 
@@ -86,47 +132,65 @@ if (!fs.existsSync(changesDir)) {
       const rel = path.relative(root, sf);
       const text = fs.readFileSync(sf, "utf8");
       if (!/^##\s+(ADDED|MODIFIED|REMOVED)\s+Requirements/m.test(text)) {
-        errors.push(`${rel} 缺少标准 Delta 标题 (## ADDED/MODIFIED/REMOVED Requirements)`);
+        errors.push(`${rel} is missing a Delta heading (## ADDED/MODIFIED/REMOVED Requirements)`);
       }
       if (!/\b(MUST|SHALL)\b/.test(text)) {
-        errors.push(`${rel} 缺少 RFC 2119 关键字 (MUST 或 SHALL)`);
+        errors.push(`${rel} is missing RFC 2119 requirement keyword (MUST or SHALL)`);
       }
       if (!/^####\s+Scenario:/m.test(text)) {
-        errors.push(`${rel} 缺少至少一个 #### Scenario: 场景块`);
+        errors.push(`${rel} is missing at least one #### Scenario: block`);
       }
-      if (!/\*\*GIVEN\*\*|\bGIVEN\b/.test(text) || !/\*\*WHEN\*\*|\bWHEN\b/.test(text) || !/\*\*THEN\*\*|\bTHEN\b/.test(text)) {
-        errors.push(`${rel} 场景块需包含 GIVEN / WHEN / THEN`);
+      if (
+        !/\*\*GIVEN\*\*|\bGIVEN\b/.test(text) ||
+        !/\*\*WHEN\*\*|\bWHEN\b/.test(text) ||
+        !/\*\*THEN\*\*|\bTHEN\b/.test(text)
+      ) {
+        errors.push(`${rel} scenario blocks must include GIVEN / WHEN / THEN`);
       }
     }
   }
 }
 
-// 3. 校验 OpenAPI 3.1 基线文件
+// 3. OpenAPI 3.1 baseline check
 const openapiPath = checkExists("contracts/runtime-api/openapi.yaml");
 if (openapiPath) {
   const apiText = fs.readFileSync(openapiPath, "utf8");
   if (!/^openapi:\s*3\.1\.0\b/m.test(apiText)) {
-    errors.push("contracts/runtime-api/openapi.yaml 必须声明 openapi: 3.1.0");
+    errors.push("contracts/runtime-api/openapi.yaml must declare openapi: 3.1.0");
   }
   if (!/^info:/m.test(apiText)) {
-    errors.push("contracts/runtime-api/openapi.yaml 缺少 info: 段落");
+    errors.push("contracts/runtime-api/openapi.yaml is missing info: section");
   }
   if (!/^paths:/m.test(apiText)) {
-    errors.push("contracts/runtime-api/openapi.yaml 缺少 paths: 段落");
+    errors.push("contracts/runtime-api/openapi.yaml is missing paths: section");
   }
 }
 
-// 4. 校验 openspec/ 下非归档 Markdown 行数 <= 400
+// 4. Non-archive OpenSpec Markdown <= 400 lines
 const mdFiles = walkMarkdown(path.join(root, "openspec"));
 for (const md of mdFiles) {
   const lines = fs.readFileSync(md, "utf8").split(/\r?\n/).length;
   if (lines > 400) {
-    errors.push(`${path.relative(root, md)} 行数为 ${lines}，超过 400 行上限`);
+    errors.push(`${path.relative(root, md)} has ${lines} lines (limit: 400)`);
+  }
+}
+
+// 5. Strict Zero-CJK scan outside UI i18n paths
+const textFiles = walkAllTextFiles(root);
+for (const file of textFiles) {
+  const relUnix = path.relative(root, file).replace(/\\/g, "/");
+  if (isExemptI18nPath(relUnix)) continue;
+  const lines = fs.readFileSync(file, "utf8").split(/\r?\n/);
+  for (let i = 0; i < lines.length; i += 1) {
+    if (CJK_REGEX.test(lines[i])) {
+      errors.push(`Non-i18n CJK text forbidden: ${relUnix}:${i + 1}`);
+      break;
+    }
   }
 }
 
 if (errors.length > 0) {
-  console.error("OpenSpec 校验失败:");
+  console.error("OpenSpec validation failed:");
   for (const err of errors) {
     console.error(`  - ${err}`);
   }
@@ -134,5 +198,5 @@ if (errors.length > 0) {
 }
 
 console.log(
-  `OpenSpec 校验通过: 已校验 ${changeCount} 个 Change 包、${mdFiles.length} 个 Markdown 文件（均 <= 400 行）及 OpenAPI 3.1 契约。`
+  `OpenSpec validation passed: ${changeCount} Change packages, ${mdFiles.length} OpenSpec Markdown files (<= 400 lines), OpenAPI 3.1 valid, and 0 non-i18n CJK violations across ${textFiles.length} scanned files.`
 );
