@@ -1,36 +1,42 @@
 # Design: 006-multi-agent-automation-workflow
 
-## 1. 六角色协同拓扑（人类只抓“前门批准”与“后门终审”）
+## 1. 六角色权限与上下文隔离原则
 
-| 角色 | 主体 | 工具权限边界 | 核心职责与交付物 |
-| --- | --- | --- | --- |
-| **Maintainer** | **人类** | 仓库管理与合并最高权限 | 提出需求、批准 OpenSpec/原型、裁决取舍、看截图/证据终审合并 |
-| **Triager / Spec** | AI | 读写 `respire-resources` 提案与 Issue 标签 | 分拣 Issue（查重/补全 Spec 与依赖）、起草 Change 四件套；**严禁替人批准** |
-| **Implementer** | AI | 仅可在隔离 `.worktrees/<id>/` 写代码与开 PR | 按已批准 `tasks.md` 实现并跑单测，附前后行为对比与命令证据 |
-| **Verifier** | AI | **严格只读**（新进程、独立上下文，禁改代码/Issue） | 独立核验 PR Diff、跑 `test-cases/` 黑盒 E2E 与一致性检查，输出结构化裁决（允许标“未实测”） |
-| **Scribe** | AI | 读写文档、`LESSONS.md`、CHANGELOG | 维护 `openspec/specs/` 归档、同步 `LESSONS.md` 与记忆库 |
-| **Release Manager** | AI | 机械执行打 Tag 与发版校验 | 根据 Maintainer 指定版本号检查门禁并触发组件独立 Tag 与产物核验 |
+六角色详细指令集已沉淀在 `process/roles/`（`implementer`、`verifier`、`triager`、`scribe`、`release-manager` + 人类 `maintainer`）。核心防线为：
+- **进程级做验分离**：Implementer 完成编码并使 `ci-gate` 变绿后，必须在新会话启动**只读权限的 Verifier Agent** 执行核验；
+- **人类双闸门控盘**：人类仅拍板“批准 OpenSpec/原型（前门）”与“终审合并 PR / 指定发版号（后门）”。
 
-## 2. 确定性流程引擎 `respire-process`（借鉴 `sebas-process`）
+## 2. 确定性流程引擎 `process/scripts/respire-process.mjs` 规格
 
-用纯脚本语言（Node.js `.mjs`）实现零歧义的流程状态机，避免让 LLM 自由猜测下一步：
+借鉴 `ShiningRay/sebas-process`，采用纯 Node.js（零外部依赖）封装确定性 CLI 状态机，退出码契约如下：
+- `0`：校验通过 / 选卡成功；
+- `1`：配置错误、非法格式、结构校验失败或缺少可信凭据（Fail-Closed）；
+- `2`：`blocked` 或 `needs_human`（需人类 Maintainer 介入裁决）。
 
-1. **`next`（智能选卡）**：拉取当前 Milestone 中所有 `Spec Approved` 状态且前置依赖 Issue 已有可信 `Evidence` 的任务，排除被阻塞项，输出唯一建议的下一步动作与对应 Worktree 指令。
-2. **`verify-merge <pr>`（合并前硬门禁）**：Fail-Closed 校验：
-   - 对应 OpenSpec Change 已获批准；
-   - GitHub CI（含 `ci-gate`、架构护栏、`oasdiff`、UI Preview）全绿；
-   - 存在来自独立 `Verifier` 的核验结论，且所有 `must_fix` 均已关闭；
-   - PR 作者与 Verifier 身份非同一单次会话/自审。
-3. **`evidence-register`（可信证据自动登记）**：PR 合并且关联 Issue 关闭、主干 CI 全绿后，由仅授予 `github-actions[bot]` 的工作流写入不可伪造的结构化 Evidence 评论，自动解锁 DAG 下游 Issue。
+### 核心子命令定义
 
-## 3. 夜间 `LESSONS.md` 审计与护栏升格机制（借鉴 `magpie`）
+| 子命令 | 功能与输入 | Fail-Closed 校验规则 |
+| --- | --- | --- |
+| `roles [name] [--one-line]` | 输出指定或全部角色的标准化冷启动指令 | 角色文件缺失立即报错退出 `1` |
+| `next [--repo <name>]` | 读取当前活跃 Milestone 的 Issue、OpenSpec 状态与前置 `Evidence` | 前置依赖未关闭或缺少可信 `Evidence` 的 Issue 标记 `blocked` 跳过，返回唯一可执行任务 JSON |
+| `verify-merge <pr> <issue>` | PR 合并前最终门禁核查 | 核对 CI `ci-gate` 全绿 + 非同一作者的独立 Verifier `PASS` 裁决 + 无未解决 `must_fix`；缺任一项退出 `1` |
+| `evidence-register <pr>` | 由 CI Bot 调用，为已合并且全绿的 PR 登记结构化 `Evidence` 评论 | 验证 PR 已合并入 `main`、关联 Issue 已关闭、HEAD SHA 全检通过、幂等防重复；否则拒绝写入 |
 
-- 每周或每次 Milestone 收官自动运行审计任务，扫描 `git log` 中所有 `fix:`、`revert` 及被打回多次的 PR；
-- 归类分析“为何当时 CI 和 Reviewer 没拦住”；
-- 发现连续出现 **≥ 3 次** 的共性问题（如模型切换吞错、偏好白名单遗漏、跨模块重复实现），自动生成一个带 `guardrail` 标签的 OpenSpec Change 草案，直接把它变成一条永久 CI 守护测试。
+## 3. 可信身份白名单与 Evidence 自动登记
 
-## 4. Risks & Rollback
+- 在 `.github/agents.yml` 声明两档独立身份白名单：
+  - `maintainers: [luodaoyi]`（人类裁决权）；
+  - `trusted_bots: [github-actions[bot]]`（仅限受信任 CI Workflow 自动登记 Evidence）。
+- `evidence-register.yml` 仅在主干合并后 CI 全绿时由 `github-actions[bot]` 触发，回查评论真实作者是否在白名单内，杜绝普通评论伪造验收记录。
 
-- **风险**：多 Agent 流程过繁导致小型紧急修复响应变慢。
-- **缓解**：为紧急 `hotfix/` 提供快速通道（仍需独立 Verifier 快速复核核心回归与事后 24 小时补写 `LESSONS.md`）。
-- **回滚**：`respire-process` 作为纯 CLI 编排层运行，任何时刻 Maintainer 均可手工覆盖标签或直接合入紧急补丁，流程脚本本身不影响业务运行时。
+## 4. `LESSONS.md` 夜间复盘与三振升格闭环（借鉴 `magpie`）
+
+每周/每 Milestone 收官自动执行审计工作流：
+1. 汇总区间内 `fix:`、`revert` 提交及被打回超过 1 轮的 PR；
+2. 提炼根因并追加至 `LESSONS.md`；
+3. 检查同类标签计数：凡累计出现 **≥ 3 次** 的同类缺陷，自动在 GitHub 开出带 `guardrail` 标签的 Issue，要求转化为自动化守护测试写入 `check-guardrails.mjs` 或 `test-cases/`。
+
+## 5. Risks & Rollback
+
+- **风险**：早期流程脚本若边界判断过严，可能把合法紧急任务误拦为 `blocked`。
+- **缓解**：所有门禁均支持 Maintainer 在紧急 `hotfix/` 场景手动覆盖合并，同时自动记录 `LESSONS.md` 审计项以修正规则，不阻塞线上救火。

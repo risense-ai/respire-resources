@@ -1,18 +1,26 @@
 # Tasks: 006-multi-agent-automation-workflow
 
-## 阶段一：角色提示词与只读隔离规范
+## 阶段一：角色提示词与可信白名单定型
 
-- [ ] **T06-01** 在 `process/roles/` 沉淀六角色标准提示词与权限矩阵（重点固化 Verifier 只读沙箱与禁止自写自验边界）
-- [ ] **T06-02** 为各端 `.coderabbit.yaml` 增加基于 `LESSONS.md` 的路径定向审查规则并全面启用严格审查
+- [x] **T06-01** 在 `process/roles/` 建立六角色职责规范与一句话冷启动提示词速查表
+- [ ] **T06-02** 创建 `.github/agents.yml`（声明 `maintainers` 与 `trusted_bots` 白名单），并将最新 `process/templates/coderabbit.yaml` 同步应用到所有活跃代码仓
 
-## 阶段二：确定性状态机 `respire-process` 与可信 Evidence
+## 阶段二：确定性流程引擎 `respire-process.mjs` 与 Evidence 自动化
 
-- [ ] **T06-03** 实现 `process/scripts/respire-process.mjs`（支持 `roles`、`next` 选卡、依赖 DAG 检查与 `verify-merge` Fail-Closed 门禁）
-- [ ] **T06-04** 为 `respire-process.mjs` 编写完备单元测试（覆盖非法结构拒绝、无证据拒绝解锁、幂等评论更新）
-- [ ] **T06-05** 在 `respire-resources` 与 `respire` 落地 `evidence-register.yml`（仅限受信 Bot 在 CI 全绿合入后登记可信验收证据）
+- [ ] **T06-03** 实现 `process/scripts/respire-process.mjs`（支持 `roles`、`next`、`verify-merge`、`evidence-register` 及退出码 `0/1/2` 契约）
+- [ ] **T06-04** 为 `respire-process.mjs` 编写 Node 内置 `node:test` 单元测试套件（验证 Fail-Closed、DAG 依赖阻塞、白名单校验与幂等评论）
+- [ ] **T06-05** 在 `respire-resources` 与 `respire` 落地 `.github/workflows/evidence-register.yml`（PR 合并且全绿后由 Bot 自动登记 Evidence 解锁下游任务）
 
-## 阶段三：闭环试运行与夜间 `LESSONS` 复盘
+## 阶段三：端到端实战试运行与夜间 `LESSONS` 闭环
 
-- [ ] **T06-06** 实现定期复盘脚本与工作流：扫描近期 `fix:` 提交生成 `LESSONS.md` 候选草稿并标注 3 次升格告警
-- [ ] **T06-07** 选取一个真实业务需求端到端跑通全自动闭环（Triager -> Maintainer 批准 -> Implementer -> 只读 Verifier + UI Preview -> Maintainer 合并 -> Archive）
-- [ ] **T06-08** 验收归档：将 `specs/agent-workflow/spec.md` 合并至 `openspec/specs/`
+- [ ] **T06-06** 实现定期 `lessons-audit` 脚本/工作流：自动提取近期 `fix:` 提交生成 `LESSONS.md` 审计报告，并对累计 ≥ 3 次问题自动提议 `guardrail` Issue
+- [ ] **T06-07** 选取一个真实业务需求端到端跑通完整自动化闭环（Triager 起草 -> Maintainer 批准 -> Implementer 隔离开发 -> 只读 Verifier 实测 + UI Preview -> Maintainer 合并 -> Bot 登记 Evidence -> Scribe 归档）
+- [ ] **T06-08** 验收归档：演练闭环通过后由 Scribe 将 `specs/agent-workflow/spec.md` 合并至 `openspec/specs/`
+
+## 验收命令
+
+```sh
+node --test process/scripts/respire-process.test.mjs
+node process/scripts/respire-process.mjs roles --one-line
+node process/scripts/validate-openspec.mjs
+```

@@ -14,15 +14,23 @@ servers:
         default: "3930"
 tags:
   - name: health
-    description: Health check and capability negotiation
+    description: Health check, capability negotiation, and lightweight status
   - name: memories
     description: Memory CRUD and semantic recall
   - name: diary
     description: Daily diary entries and timeline
+  - name: organize
+    description: Tree organization (deepen plan/apply, split, suggestions)
   - name: models
     description: Model catalog, active assets, switch, and managed downloads
   - name: operations
     description: Asynchronous long-running operations and SSE streams
+  - name: spaces
+    description: Multi-space management and membership
+  - name: sync
+    description: Cloud/device synchronization status and triggers
+  - name: host
+    description: Account, authentication transactions, and device config
 
 paths:
   /v1/health:
@@ -43,6 +51,24 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetails"
+
+  /v1/status/light:
+    get:
+      operationId: getLightStatus
+      tags: [health]
+      summary: SQL-aggregated lightweight counts and timestamps (never loads full store)
+      parameters:
+        - name: space_id
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Lightweight aggregated status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LightStatusResponse"
 
   /v1/memories:
     get:
@@ -228,6 +254,88 @@ paths:
               schema:
                 $ref: "#/components/schemas/DiaryEntry"
 
+  /v1/organize/deepen/plan:
+    post:
+      operationId: planOrganizeDeepen
+      tags: [organize]
+      summary: Compute tree deepen clustering plan via Core ABI
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrganizeDeepenPlanRequest"
+      responses:
+        "200":
+          description: Proposed tree deepen plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrganizeDeepenPlanResponse"
+
+  /v1/organize/deepen/apply:
+    post:
+      operationId: applyOrganizeDeepen
+      tags: [organize]
+      summary: Apply a confirmed tree deepen plan and enqueue sync
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrganizeDeepenApplyRequest"
+      responses:
+        "202":
+          description: Deepen apply operation accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperationAccepted"
+
+  /v1/organize/split:
+    post:
+      operationId: splitOrganizeNode
+      tags: [organize]
+      summary: Split an oversized memory tree node
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrganizeSplitRequest"
+      responses:
+        "202":
+          description: Split operation accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperationAccepted"
+
+  /v1/organize/suggestions:
+    get:
+      operationId: getOrganizeSuggestions
+      tags: [organize]
+      summary: Fetch on-demand tree cure / organize suggestions (never polled blindly)
+      parameters:
+        - name: space_id
+          in: query
+          schema:
+            type: string
+        - name: top
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        "200":
+          description: Organization suggestions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrganizeSuggestionsResponse"
+
   /v1/models/catalog:
     get:
       operationId: getModelCatalog
@@ -365,6 +473,240 @@ paths:
               schema:
                 $ref: "#/components/schemas/OperationEvent"
 
+  /v1/spaces:
+    get:
+      operationId: listSpaces
+      tags: [spaces]
+      summary: List available memory spaces
+      responses:
+        "200":
+          description: Space list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SpaceListResponse"
+    post:
+      operationId: createSpace
+      tags: [spaces]
+      summary: Create a new memory space
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSpaceRequest"
+      responses:
+        "201":
+          description: Created space
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SpaceItem"
+
+  /v1/spaces/{spaceId}:
+    parameters:
+      - name: spaceId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getSpace
+      tags: [spaces]
+      summary: Get space details
+      responses:
+        "200":
+          description: Space details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SpaceItem"
+        "404":
+          description: Space not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+    patch:
+      operationId: updateSpace
+      tags: [spaces]
+      summary: Update space metadata or active state
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSpaceRequest"
+      responses:
+        "200":
+          description: Updated space
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SpaceItem"
+    delete:
+      operationId: deleteSpace
+      tags: [spaces]
+      summary: Delete a space
+      responses:
+        "204":
+          description: Space deleted
+        "404":
+          description: Space not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+
+  /v1/spaces/{spaceId}/members:
+    parameters:
+      - name: spaceId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: listSpaceMembers
+      tags: [spaces]
+      summary: List members and grants for a shared space
+      responses:
+        "200":
+          description: Space members
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SpaceMemberListResponse"
+    post:
+      operationId: inviteSpaceMember
+      tags: [spaces]
+      summary: Add or invite a member to a space
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InviteSpaceMemberRequest"
+      responses:
+        "201":
+          description: Member added or invited
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SpaceMember"
+
+  /v1/sync/status:
+    get:
+      operationId: getSyncStatus
+      tags: [sync]
+      summary: Query synchronization state and pending outbox count
+      responses:
+        "200":
+          description: Sync status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncStatusResponse"
+
+  /v1/sync/trigger:
+    post:
+      operationId: triggerSync
+      tags: [sync]
+      summary: Enqueue an asynchronous sync cycle
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TriggerSyncRequest"
+      responses:
+        "202":
+          description: Sync operation accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperationAccepted"
+
+  /v1/host/account:
+    get:
+      operationId: getHostAccount
+      tags: [host]
+      summary: Get current account, device binding, and auth transaction state
+      responses:
+        "200":
+          description: Account status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HostAccountResponse"
+
+  /v1/host/transactions/login:
+    post:
+      operationId: executeLoginTransaction
+      tags: [host]
+      summary: Execute Runtime-owned account login / recovery transaction
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginTransactionRequest"
+      responses:
+        "200":
+          description: Transaction step or completion result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HostTransactionResult"
+        "400":
+          description: Invalid login payload
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+
+  /v1/host/transactions/logout:
+    post:
+      operationId: executeLogoutTransaction
+      tags: [host]
+      summary: Execute Runtime-owned logout transaction without leaving orphaned host state
+      responses:
+        "200":
+          description: Logout completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HostTransactionResult"
+
+  /v1/host/config:
+    get:
+      operationId: getHostConfig
+      tags: [host]
+      summary: Get Runtime-authoritative host/agent/model-mirror configuration
+      responses:
+        "200":
+          description: Current configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HostConfig"
+    patch:
+      operationId: patchHostConfig
+      tags: [host]
+      summary: Atomically update configuration without stopping Runtime
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchHostConfigRequest"
+      responses:
+        "200":
+          description: Updated configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HostConfig"
+
 components:
   schemas:
     ProblemDetails:
@@ -406,6 +748,22 @@ components:
           items:
             type: string
           description: Feature flags such as openapi.v1, sse.operations.v1, model.catalog.v2, model.active_assets, model.managed_download, host.transactions.v1
+
+    LightStatusResponse:
+      type: object
+      required: [space_id, memory_count, diary_count, indexed_count]
+      properties:
+        space_id:
+          type: string
+        memory_count:
+          type: integer
+        diary_count:
+          type: integer
+        indexed_count:
+          type: integer
+        last_updated_at:
+          type: [string, "null"]
+          format: date-time
 
     CreateMemoryRequest:
       type: object
@@ -544,6 +902,76 @@ components:
         content:
           type: string
 
+    OrganizeDeepenPlanRequest:
+      type: object
+      properties:
+        space_id:
+          type: string
+        parent_id:
+          type: [string, "null"]
+        auto:
+          type: boolean
+          default: false
+
+    OrganizeDeepenMove:
+      type: object
+      required: [memory_id, new_parent_id]
+      properties:
+        memory_id:
+          type: string
+        new_parent_id:
+          type: string
+        reason:
+          type: string
+
+    OrganizeDeepenPlanResponse:
+      type: object
+      required: [plan_id, moves]
+      properties:
+        plan_id:
+          type: string
+        moves:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrganizeDeepenMove"
+
+    OrganizeDeepenApplyRequest:
+      type: object
+      required: [plan_id]
+      properties:
+        plan_id:
+          type: string
+
+    OrganizeSplitRequest:
+      type: object
+      required: [memory_id]
+      properties:
+        memory_id:
+          type: string
+        space_id:
+          type: string
+
+    OrganizeSuggestion:
+      type: object
+      required: [kind, target_id, summary]
+      properties:
+        kind:
+          type: string
+          enum: [deepen, split, merge, stale]
+        target_id:
+          type: string
+        summary:
+          type: string
+
+    OrganizeSuggestionsResponse:
+      type: object
+      required: [suggestions]
+      properties:
+        suggestions:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrganizeSuggestion"
+
     EngineAvailability:
       type: object
       required: [engine, available]
@@ -658,3 +1086,155 @@ components:
           enum: [progress, completed, failed, cancelled]
         data:
           $ref: "#/components/schemas/OperationStatus"
+
+    SpaceItem:
+      type: object
+      required: [id, name, role]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+          enum: [owner, editor, viewer]
+        active:
+          type: boolean
+
+    SpaceListResponse:
+      type: object
+      required: [spaces]
+      properties:
+        spaces:
+          type: array
+          items:
+            $ref: "#/components/schemas/SpaceItem"
+
+    CreateSpaceRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+
+    UpdateSpaceRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        active:
+          type: boolean
+
+    SpaceMember:
+      type: object
+      required: [member_id, role, status]
+      properties:
+        member_id:
+          type: string
+        display_name:
+          type: string
+        role:
+          type: string
+          enum: [owner, editor, viewer]
+        status:
+          type: string
+          enum: [active, pending]
+
+    SpaceMemberListResponse:
+      type: object
+      required: [members]
+      properties:
+        members:
+          type: array
+          items:
+            $ref: "#/components/schemas/SpaceMember"
+
+    InviteSpaceMemberRequest:
+      type: object
+      required: [identifier, role]
+      properties:
+        identifier:
+          type: string
+        role:
+          type: string
+          enum: [editor, viewer]
+
+    SyncStatusResponse:
+      type: object
+      required: [state, pending_outbox]
+      properties:
+        state:
+          type: string
+          enum: [idle, syncing, error, offline]
+        pending_outbox:
+          type: integer
+        last_synced_at:
+          type: [string, "null"]
+          format: date-time
+
+    TriggerSyncRequest:
+      type: object
+      properties:
+        space_id:
+          type: string
+
+    HostAccountResponse:
+      type: object
+      required: [signed_in, transaction_state]
+      properties:
+        signed_in:
+          type: boolean
+        account_id:
+          type: [string, "null"]
+        device_id:
+          type: [string, "null"]
+        transaction_state:
+          type: string
+          enum: [none, login_pending, recovery_pending]
+
+    LoginTransactionRequest:
+      type: object
+      required: [mode]
+      properties:
+        mode:
+          type: string
+          enum: [browser_oauth, offline_keygen, recovery]
+        passphrase_present:
+          type: boolean
+
+    HostTransactionResult:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [completed, pending_browser, pending_confirmation]
+        authorize_url:
+          type: [string, "null"]
+        message:
+          type: string
+
+    HostConfig:
+      type: object
+      required: [language, model_mirror, diary_mode]
+      properties:
+        language:
+          type: string
+        model_mirror:
+          type: string
+        diary_mode:
+          type: string
+        proxy_url:
+          type: [string, "null"]
+
+    PatchHostConfigRequest:
+      type: object
+      properties:
+        language:
+          type: string
+        model_mirror:
+          type: string
+        diary_mode:
+          type: string
+        proxy_url:
+          type: [string, "null"]

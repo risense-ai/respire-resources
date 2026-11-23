@@ -6,53 +6,47 @@
 risense-ai/respire/
 ├── .github/workflows/
 │   ├── ci.yml                # detect-changes -> 按路径跑各端 CI -> ci-gate 聚合
-│   ├── verify.yml            # 契约漂移 / 架构护栏 / 独立核验
+│   ├── verify.yml            # 架构护栏 / OpenAPI 同步锁 / 独立核验
 │   ├── e2e.yml               # 合入 main 或发版前拉取 respire-resources 跑全链路 E2E
 │   └── release.yml           # 按 Tag 前缀独立发版 + 老仓/NPM 镜像 Fan-Out
 ├── apps/
-│   ├── runtime/              # 独立 Cargo.toml + Cargo.lock (禁止被 cli 路径依赖)
-│   ├── cli/                  # 独立 Cargo.toml + Cargo.lock (仅依赖 packages/runtime-sdk-rs)
-│   └── client2/              # 独立 go.mod + go.sum (仅依赖 packages/runtime-sdk-go)
-├── packages/
-│   ├── runtime-sdk-rs/       # 自动生成自 respire-resources openapi.yaml
-│   ├── runtime-sdk-go/       # 自动生成自 respire-resources openapi.yaml
-│   └── runtime-sdk-ts/       # 自动生成自 respire-resources openapi.yaml
-├── contracts/                # 从 respire-resources 同步并锁定来源 SHA 的只读快照
-└── scripts/                  # 精简后的共享构建、契约同步与镜像发布脚本
+│   ├── runtime/              # 独立 Cargo.toml + Cargo.lock
+│   ├── cli/                  # 独立 Cargo.toml + Cargo.lock (禁止路径依赖 apps/runtime)
+│   └── client2/              # 独立 go.mod + go.sum
+├── packages/                 # 自动生成自 respire-resources openapi.yaml (禁手改)
+├── contracts/                # sync.lock.json 锁定 respire-resources commit + SHA-256
+└── scripts/check-guardrails.mjs
 ```
 
-**为什么不合并成顶层单一 Cargo Workspace？**  
-共享 Cargo Workspace 会把 `apps/runtime` 和 `apps/cli` 绑在同一份 `Cargo.lock` 与依赖特征图上，不仅无法避免改一端重编另一端，还会诱使 Agent 随手在 `cli` 里引用 `runtime` 内部 crate。保持各自独立清单是成本最低的硬隔离。
+## 2. 带过滤的历史合仓操作步骤（`git filter-repo`）
 
-## 2. 带过滤的历史合仓策略
+在隔离临时目录（例如 `D:\tmp\monorepo-import\`）中操作，**严禁改动本地干净主副本**：
 
-1. **前置**：Maintainer 将现存归档仓 `risense-ai/respire` 改名为 `risense-ai/respire-legacy-202610`，新建公开仓 `risense-ai/respire`。
-2. **分支合入前清洗**：使用 `git filter-repo` 将三仓分别重写前缀为 `apps/runtime/`、`apps/cli/`、`apps/client2/`；对 `respire-cli` 历史，在导入工作分支前物理移除 `runtime/`、`crates/{core-sdk,app,app-domain,storage,crypto}/`、两份重复 `contracts/`（保留单一同步来源）及 23 个历史一次性 workflow，确保不把 5.4 万行垃圾和无效体积搬进新 Monorepo。
-3. **统一提交历史**：通过 `--allow-unrelated-histories` 合入新仓 `main`，保留三仓完整作者与 commit 审计脉络。
+1. **导入 `respire-runtime` → `apps/runtime/`**：
+   - `git clone --no-local respire-runtime imp-runtime && cd imp-runtime`
+   - `git filter-repo --to-subdirectory-filter apps/runtime --invert-paths --path contracts/ --path .github/workflows/`
+2. **清洗并导入 `respire-cli` → `apps/cli/`（直接丢弃 5.4 万行遗留服务端与 23 个历史 workflow）**：
+   - `git clone --no-local respire-cli imp-cli && cd imp-cli`
+   - 过滤掉以下已知历史包袱目录与文件后再重定位至 `apps/cli/`：
+     - 遗留服务端 6 个 crate：`runtime/`、`crates/core-sdk/`、`crates/app/`、`crates/app-domain/`、`crates/storage/`、`crates/crypto/`
+     - 14 个 `server` 门控与冗余文件：`crates/commands/src/{admission,bench,engine,lexical,lexical_cache,model_install,network,recall_select,rpc_serve,rpc_worker,runtime_http,skill,sync_flow,util}.rs`、`crates/commands/src/model_progress.rs`、`crates/commands/src/model_granite.rs`、`cli/src/network.rs`
+     - 重复契约与废旧 CI：`contracts/`、`.github/workflows/`、`.worktrees/`
+     - 执行 `git filter-repo --to-subdirectory-filter apps/cli ...`
+3. **导入 `respire-client2` → `apps/client2/`**：
+   - `git clone --no-local respire-client2 imp-client2 && cd imp-client2`
+   - `git filter-repo --to-subdirectory-filter apps/client2 --invert-paths --path .github/workflows/ --path .worktrees/`
+4. **依次合并入 `respire` 新分支（`--allow-unrelated-histories`）**，检查无误后修复各端相对路径引用（如指向根目录 `contracts/` 与 `packages/`）并开 PR 合并。
 
-## 3. 路径路由 CI 与 `ci-gate` 聚合
+## 3. Release Fan-Out 镜像产物矩阵（兼容老仓与 NPM）
 
-- **`detect-changes` job**：比对 `pull_request` base/head 变更文件列表，输出布尔值 `runtime`、`cli`、`client2`、`contracts`、`docs_only`：
-  - 修改 `apps/client2/**` → 只跑 `client2-ci`（与 `005` 的 UI Preview）；
-  - 修改 `apps/cli/**` → 只跑 `cli-ci`；
-  - 修改 `apps/runtime/**` → 只跑 `runtime-ci`；
-  - 修改 `contracts/**` 或 `packages/**` → 触发受影响的所有端 CI 与 `oasdiff` 检查。
-- **`ci-gate` job**：作为 GitHub Branch Protection **唯一必填检查项**（`needs: [detect-changes, runtime-ci, cli-ci, client2-ci, contract-check]`），使用 `if: always()` 判断所有被触发 job 必须 `success`，`skipped` 视作通过，避免跳过检查导致 PR 无法合并。
+| Monorepo Tag | 新仓 Release | 必须镜像的老仓库及产物清单 |
+| --- | --- | --- |
+| **`runtime-vX.Y.Z`** | `risense-ai/respire` (`runtime-vX.Y.Z`) | `risense-ai/respire-runtime` (`vX.Y.Z`)：8 目标 `rsrs-runtime-<triple>.tar.gz` 与 `runtime-build-<triple>.json`（保持 schema-2 字段 `archive_sha256` / `binary_sha256`） |
+| **`cli-vX.Y.Z`** | `risense-ai/respire` (`cli-vX.Y.Z`) | 发布 NPM 包 `rsrs-cli` 及 8 平台子包（`@rsrsai/{linux-x64-gnu,linux-x64,linux-arm64-gnu,linux-arm64,macos-x64,macos-arm64,win32-x64,win32-arm64}`）+ 镜像至 `risense-ai/respire-cli` (`vX.Y.Z`)；保留 `model-bge-m3-ort-v1` |
+| **`client2-vX.Y.Z`** | `risense-ai/respire` (`client2-vX.Y.Z`) | `risense-ai/respire-client2` (`vX.Y.Z`)：`respire-windows-{amd64,arm64}.exe`、`respire-windows-{amd64,arm64}-setup.exe`、`respire-linux-{amd64,arm64}.tar.gz`、macOS `.dmg`/`.tar.gz`、`SHA256SUMS`、`client-updates.json`、`release-notes.md` |
 
-## 4. 独立 Release 与老仓库/NPM 双向镜像
+## 4. Risks & Rollback
 
-| Tag 格式 | 触发流水线 | 新仓产出 | 老仓与 NPM 同步动作（Fan-Out） |
-| --- | --- | --- | --- |
-| `runtime-vX.Y.Z` | `release.yml` (`runtime`) | `risense-ai/respire` Release (`runtime-vX.Y.Z`) | 用 GitHub App Token 镜像同批二进制 + `runtime-build-<triple>.json` + `.sha256` 至 `risense-ai/respire-runtime`（Tag `vX.Y.Z`） |
-| `cli-vX.Y.Z` | `release.yml` (`cli`) | `risense-ai/respire` Release (`cli-vX.Y.Z`) | 发布 NPM 包，并镜像二进制与校验文件至 `risense-ai/respire-cli`（Tag `vX.Y.Z`） |
-| `client2-vX.Y.Z` | `release.yml` (`client2`) | `risense-ai/respire` Release (`client2-vX.Y.Z`) | 镜像多平台安装包与 manifest 至 `risense-ai/respire-client2`（Tag `vX.Y.Z`） |
-
-**双源升级与老仓退场**：
-- 老仓库立即锁定代码写入（设 Branch Protection 禁止新代码合入、README 标注已迁至 `risense-ai/respire`），但**保留既有全部 Release 与 `model-bge-m3-ort-v1` 静态资产 Tag**。
-- 新版本 CLI 与 Client2 自更新器改为“优先读取新 Monorepo 前缀 Tag，失败时回退老仓”；经 Maintainer 确认存量老版本过渡完成后，再关闭镜像步骤并归档老仓库。
-
-## 5. Risks & Rollback
-
-- **风险**：跨仓自动镜像需要具有三老仓 `contents: write` 权限的 Token。
-- **缓解**：使用最小权限 GitHub App（仅限 release 写入，限制在 `release`受保护 Environment 且仅 Tag 触发），镜像失败不回滚新仓发布但触发告警重试。
-- **回滚**：在过渡完成并宣布切换前，三个老仓库的代码分支保持冻结但完整可用，随时可作为只读基线。
+- **风险**：CLI 移除服务端 crate 后，原本依赖 `server` feature 的测试会编译失败。
+- **缓解**：合入 PR 中将原 `server` 测试拆分为调用独立 `rsrs-runtime` 契约 Mock 测试；在 `003` 完成前三个老仓库保持代码可用但冻结新合并。
+- **回滚**：导入操作通过独立 PR 合入 `respire`，老仓库原始提交历史丝毫未改。

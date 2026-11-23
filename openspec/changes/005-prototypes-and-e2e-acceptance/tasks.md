@@ -1,19 +1,26 @@
 # Tasks: 005-prototypes-and-e2e-acceptance
 
-## 阶段一：高保真原型与共享 Mock 数据集
+## 阶段一：高保真原型与确定性 Mock 服务
 
-- [ ] **T05-01** 将 Client2 现有 `ui-mock/server.mjs` 升级迁移至 `prototypes/mock-api/`，对齐 `openapi.yaml` V1 路由与 SSE 进度模拟
-- [ ] **T05-02** 抽离 `prototypes/tokens/`（流体 `rem` 字体与配色令牌）及多场景测试种子数据（空库/大数据/下载报错/多账号）
-- [ ] **T05-03** 在 `prototypes/pages/` 补齐核心高保真 HTML 原型（优先覆盖 `wizard`、`models`、`workspace` 四视图、`diary`、`organize`、`accounts`、`quickpanel`）
+- [ ] **T05-01** 将 `respire-client2/.verification/ui-mock/server.mjs` 升级迁移至 `prototypes/mock-api/server.mjs`，完整实现 `openapi.yaml` `/v1/*` 路由、SSE 事件流与 5 套种子场景数据集
+- [ ] **T05-02** 抽离 `prototypes/tokens/tokens.css`（流体 `rem` 字号、色彩与圆点状态组件）
+- [ ] **T05-03** 在 `prototypes/pages/` 补齐 16 个核心高保真 HTML 原型页面并支持无构建直接浏览器交互演示
 
 ## 阶段二：黑盒 E2E 验收裁判库（`test-cases/`）
 
-- [ ] **T05-04** 编写核心场景执行器（消费 `test-cases/scenarios/*.yaml` 对真实 Runtime 发起黑盒调用并断言）
-- [ ] **T05-05** 落地 `cli-e2e/` 与 `plugin-rpc/`（含 Windows 64KB+ UTF-8 JSON、reparse point 与 `Paused` 零残留专项测试）
-- [ ] **T05-06** 落地 `client2-e2e/` Playwright 双语（`en`/`zh`）回归测试集（含页面无报错、i18n 完整性与关键状态交互）
+- [ ] **T05-04** 编写 `test-cases/runner.mjs` 场景执行器并扩充 `scenarios/*.yaml`（覆盖冷启动、模型下载取消、切换期并发 `recall`、失败安全回滚、多空间隔离）
+- [ ] **T05-05** 落地 `test-cases/cli-e2e/` 与 `test-cases/plugin-rpc/`（含 Windows 100 KB+ UTF-8 JSON HTTP/MCP 写入召回与 reparse point 在线清理测试）
+- [ ] **T05-06** 落地 `test-cases/client2-e2e/` Playwright 双语（`en`/`zh`）全页面交互、i18n 与布局断言套件
 
-## 阶段三：Client2 PR 自动视觉预览与 E2E 集成
+## 阶段三：跨端 E2E 与 Client2 PR 自动 UI Preview 流水线
 
-- [ ] **T05-07** 在 Monorepo 实现 `e2e.yml`（拉取 `respire-resources/test-cases` 在三平台 Runner 对真实编译产物执行黑盒验收）
-- [ ] **T05-08** 实现 Client2 PR UI Preview 工作流（`detect -> record -> publish` 权限隔离，自动贴双语截图与 MP4 至 PR 描述）
-- [ ] **T05-09** 验收归档：跑通首轮全链路 E2E 与 UI Preview 后将 `specs/prototypes-and-e2e/spec.md` 合并至 `openspec/specs/`
+- [ ] **T05-07** 在 `risense-ai/respire` 落地 `.github/workflows/e2e.yml`（三平台 Ubuntu/macOS/Windows 拉取 `respire-resources/test-cases` 跑真实产物黑盒验收）
+- [ ] **T05-08** 在 `risense-ai/respire` 落地 `.github/workflows/ui-preview.yml`（`detect -> record -> publish` 权限隔离，自动生成双语截图与 MP4 视频并更新 PR 描述）
+- [ ] **T05-09** 验收归档：全部 E2E 与 UI Preview 实际跑绿一次后，由 Scribe 将 `specs/prototypes-and-e2e/spec.md` 合并至 `openspec/specs/`
+
+## 验收命令
+
+```sh
+node test-cases/runner.mjs --runtime-bin <path-to-rsrs-runtime>
+npx playwright test --config test-cases/client2-e2e/playwright.config.mjs
+```

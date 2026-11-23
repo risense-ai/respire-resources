@@ -2,41 +2,32 @@
 
 ## 1. 高保真 HTML 原型体系（`prototypes/`）
 
-- **共享设计令牌（`prototypes/tokens/`）**：与 Client2 统一使用流体根字号 `clamp(14px, 0.5rem + 0.62vw, 18.8px)` 与 `rem` 比例尺、颜色变量、字体栈与状态圆点规范（与 `respire-client2` 现有视觉规范一脉相承）。
-- **页面全覆盖清单（`prototypes/pages/`）**：
-  - 主工作区：`overview`、`recall`、`workspace`（树形 / 列表 / 卡片 / 图谱四种记忆视图）、`diary`、`organize`、`stats`；
-  - 模型与设置：`wizard`（引导向导）、`models`、`accounts`、`grants`、`space-members`、`storage`、`injection`、`session-import`、`settings`、`quickpanel`。
-- **确定性 Mock Runtime（`prototypes/mock-api/`）**：从现存 `respire-client2/.verification/ui-mock/server.mjs` 升级迁移而来，严格对齐 `contracts/runtime-api/openapi.yaml`，并内置多场景种子数据集（空库 / 正常千条记忆 / 模型下载与 SSE 进度 / 切换报错回滚 / 多账号切换）。
+- **共享设计令牌（`prototypes/tokens/`）**：提取与 Client2 一致的流体根字号 `clamp(14px, 0.5rem + 0.62vw, 18.8px)`、`rem` 间距/字号标尺、明暗主题色板与圆点状态组件。
+- **完整 16 个界面原型清单（`prototypes/pages/`）**：
+  - 引导与速览：`wizard.html`、`overview.html`、`quickpanel.html`
+  - 记忆核心：`workspace.html`（树形 / 列表 / 卡片 / 图谱四种视图）、`recall.html`、`diary.html`、`organize.html`
+  - 模型与存储：`models.html`、`storage.html`、`session-import.html`、`stats.html`
+  - 账户与配置：`accounts.html`、`grants.html`、`space-members.html`、`injection.html`、`settings.html`
+- **确定性 Mock Runtime（`prototypes/mock-api/server.mjs`）**：从 `respire-client2/.verification/ui-mock/server.mjs` 升级迁移并严格实现 `openapi.yaml` 全部 `/v1/*` 路由与 SSE 进度流，内置 5 套固定种子数据（`empty`、`rich-1k`、`downloading-sse`、`switch-rollback-error`、`multi-account`）。
 
-## 2. 语言无关 E2E 验收裁判库（`test-cases/`）
+## 2. 黑盒 E2E 验收裁判库（`test-cases/`）
 
-将验收逻辑彻底从被测应用代码库中抽离出来：
+1. **`scenarios/*.yaml`**：声明式场景驱动器对真实启动的 `rsrs-runtime` 发请求并校验状态跃迁（冷启动、SSE 下载取消、模型切换期并发 `recall` 不卡死、切换失败回滚）。
+2. **`plugin-rpc/` & Windows 专项必测命令**：
+   - 在隔离目录启动真实 `rsrs-runtime` 与 `rsrs mcp`，经 HTTP `POST /v1/memories` 与 MCP stdio 提交 **100 KB+ UTF-8（含中文与 Emoji）JSON 载荷**并核验召回一致；
+   - 在含空格/中文与 OneDrive reparse point 模拟目录的 Windows Runner 上测试在线卸载非活跃模型与 `Paused` 零残留。
+3. **`client2-e2e/`（Playwright 双语断言）**：在 `en` 与 `zh` 两种语言下遍历全部核心页面，断言无控制台报错、无缺失 i18n Key、无溢出截断与状态同步正常。
 
-1. **`test-cases/scenarios/`（声明式黑盒场景）**：使用统一 YAML/JSON 描述前置条件、API/CLI 操作序列、SSE 状态跃迁与终态断言（例如：冷启动、模型下载中断续传、热切换期间并发 `recall` 不阻塞、失败安全回滚）。
-2. **`test-cases/plugin-rpc/`（插件通信验收）**：实测外部插件通过 HTTP OpenAPI 与 `rsrs mcp` stdio 调用 Runtime。
-3. **`test-cases/cli-e2e/`（真实产物黑盒）**：在隔离临时目录启动真实 `rsrs-runtime` 与 `rsrs`，验证文本/JSON 输出、自启与退出码。
-4. **`test-cases/client2-e2e/`（Playwright 跨语种 + 布局守护）**：在 `en` 与 `zh` 两种语言下验证全页面无 i18n 缺失键、无 `NaN`/溢出截断、图标对齐及交互可用性。
-5. **Windows 专项回归用例（必跑）**：
-   - 超长 UTF-8 JSON（> 64 KB）经 HTTP/MCP 写入与召回无截断；
-   - 包含空格/中文/OneDrive reparse point 的数据目录安全操作与在线模型清理；
-   - 单实例互斥锁与正常停止语义（无僵尸进程、无残余 `Paused`）。
+## 3. Client2 PR 自动 UI Preview 流水线（借鉴 `yetone/magpie`）
 
-## 3. Client2 PR 自动 UI Preview 流水线（借鉴 Magpie）
+在 `risense-ai/respire/.github/workflows/ui-preview.yml` 实现三段式权限隔离预览流：
 
-```text
-PR 修改 apps/client2/frontend/**
-  ├─▶ detect job (仅读元数据，打回无写权限)
-  ├─▶ record job (无令牌沙箱：起 Mock Runtime + Playwright Chromium)
-  │      ├─ 生成 en / zh 关键页面高清截图
-  │      ├─ 录制交互操作 MP4 (含模拟鼠标轨迹)
-  │      └─ 扫描截图/录屏确保无敏感 Token 泄露
-  └─▶ publish job (推送产物至预览分支并在 PR 正文锚点区插入截图与视频链接)
-```
-
-安全边界同 Magpie 一致：执行 PR 代码的 `record` job 不持有仓库写入凭据；持有写入权限的 `publish` job 不执行 PR 代码。
+1. **`detect` job**（`contents: read`, `pull-requests: write`）：仅当 PR 改动 `apps/client2/**/frontend/**`、`apps/client2/**/desktop/**` 或带 `ui-preview` 标签时触发；写入 PR 摘要占位块并导出安全元数据 Artifact。
+2. **`record` job**（`permissions: {}`，无写权限沙箱）：拉起 `prototypes/mock-api/server.mjs` + 编译 PR 头部 Client2 WebUI，运行 Playwright 按受影响页面录制 **英文/中文高清截图** 及带模拟指针轨迹的 **MP4 演示视频**，扫描产物确认无 Token 泄露后上传 Artifact。
+3. **`publish` job**（`contents: write`, `pull-requests: write`，不执行任何 PR 代码）：将截图/视频推送至 `ui-previews` 预览分支并在 PR 描述固定标记区内嵌展示图片与视频链接。
 
 ## 4. Risks & Rollback
 
-- **风险**：HTML 原型与真实前端逐渐脱节，变成“两份静态废纸”。
-- **缓解**：要求所有 UI 类 OpenSpec Change 必须先更新原型并通过 `test-cases/client2-e2e` 视觉基线比对；原型直接复用 `tokens/` 与 `mock-api/`。
-- **回滚**：UI Preview 初期可先设 `continue-on-error: false` 于独立预览流水线，不直接阻断后端非 UI PR 的合入。
+- **风险**：PR 代码在 `record` job 运行可能存在不可信 fork 安全隐患。
+- **缓解**：严格遵循 `magpie` 安全隔离模式——`record` job 零写入 Token 且只连接本地 Mock；`publish` job 绝不 checkout 或执行 PR 代码。
+- **回滚**：UI Preview 独立成 workflow，异常时不影响非 UI PR 的 `ci-gate`。
