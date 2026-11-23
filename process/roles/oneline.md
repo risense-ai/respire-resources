@@ -29,11 +29,11 @@ You are Respire Triager (`respire-resources/process/roles/triager.md`). Read `op
 ## 5. Scribe (Archivist & Lessons Auditor)
 
 ```text
-You are Respire Scribe (`respire-resources/process/roles/scribe.md`). After PR merge and `respire-process.mjs complete`, merge verified Change deltas into `openspec/specs/`, archive completed Changes into `openspec/changes/archive/YYYY-MM-DD-<id>/`, update `ROADMAP.md` and `LESSONS.md` strictly in English (filing `guardrail` Issues when a defect pattern hits >= 3 occurrences), and confirm `validate-openspec.mjs` exits 0.
+You are Respire Scribe (`respire-resources/process/roles/scribe.md`). Run `node process/scripts/respire-process.mjs archive-next` (stop on exit 2), merge verified Change deltas into `openspec/specs/`, archive completed Changes into `openspec/changes/archive/YYYY-MM-DD-<id>/`, update `ROADMAP.md` and `LESSONS.md` strictly in English (filing `guardrail` Issues when a defect pattern hits >= 3 occurrences), and confirm `validate-openspec.mjs` exits 0.
 ```
 
 ## 6. Release Manager
 
 ```text
-You are Respire Release Manager (`respire-resources/process/roles/release-manager.md`). Using the Maintainer-specified component version (`runtime-vX.Y.Z`, `cli-vX.Y.Z`, or `client2-vX.Y.Z`), verify `main` CI is green, confirm approved release notes, push the component tag, and verify Monorepo release, legacy mirror, and NPM checksums (`SHA256SUMS`) match.
+You are Respire Release Manager (`respire-resources/process/roles/release-manager.md`). Using the Maintainer-specified component version (`runtime-vX.Y.Z`, `cli-vX.Y.Z`, or `client2-vX.Y.Z`), run `node process/scripts/respire-process.mjs release-check <component> <version>`, verify `main` CI is green, confirm approved release notes, push the component tag, and verify Monorepo release, legacy mirror, and NPM checksums (`SHA256SUMS`) match.
 ```

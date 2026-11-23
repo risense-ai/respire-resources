@@ -28,6 +28,6 @@ Full formatted prompts in **[oneline.md](oneline.md)** (`node process/scripts/re
 - **Triager**:
   > Read `process/roles/triager.md` and `openspec/ROADMAP.md`. Triage Issues, draft OpenSpec 4-file Change packages in English, and check DAG metadata; never add `spec:approved` or edit product code.
 - **Scribe**:
-  > Read `process/roles/scribe.md` and `LESSONS.md`. Archive approved & merged Changes into `openspec/specs/`, update `ROADMAP.md` and `LESSONS.md` in English, and ensure `validate-openspec.mjs` passes.
+  > Read `process/roles/scribe.md` and `LESSONS.md`. Run `node process/scripts/respire-process.mjs archive-next` (stop on exit 2), archive verified Changes into `openspec/specs/`, update `ROADMAP.md` and `LESSONS.md` in English, and ensure `validate-openspec.mjs` passes.
 - **Release Manager**:
-  > Read `process/roles/release-manager.md`. Given Maintainer's component and version tag (`runtime-v*`, `cli-v*`, `client2-v*`), verify green `main` CI, push the tag, and confirm new, legacy mirror, and NPM artifacts match `SHA256SUMS`.
+  > Read `process/roles/release-manager.md`. Given Maintainer's component and version tag (`runtime-v*`, `cli-v*`, `client2-v*`), run `node process/scripts/respire-process.mjs release-check <component> <version>`, push the tag, and confirm new, legacy mirror, and NPM artifacts match `SHA256SUMS`.

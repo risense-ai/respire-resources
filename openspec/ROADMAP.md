@@ -16,7 +16,7 @@ flowchart LR
     C05 --> C06
 ```
 
-- **Current Status**: Both `risense-ai/respire-resources` and `risense-ai/respire` are live, public, and protected on `main` (`validate-openspec` and `ci-gate`). Org Project #1 ([Respire Transformation (001-006)](https://github.com/orgs/risense-ai/projects/1)), `M1`–`M6` Milestones, 17 labels, and all **20 DAG-linked Issues** are active (`M1` and `M2` approved; `CARD-001` completed). `respire-core` is transitioning to **open-source** under `apps/core/` after its pre-open-source secret/license audit (`CARD-002`).
+- **Current Status**: Both `risense-ai/respire-resources` and `risense-ai/respire` are live, public, auto-merge enabled, and protected on `main` (`validate-openspec` / `ci-gate` + `verdict-gate`, with automated post-merge `evidence-register`). Org Project #1 ([Respire Transformation (001-006)](https://github.com/orgs/risense-ai/projects/1)), `M1`–`M6` Milestones, 17 labels, and all **20 DAG-linked Issues** are active (`M1` and `M2` approved; `CARD-001` completed). `respire-core` is transitioning to **open-source** under `apps/core/` after its pre-open-source secret/license audit (`CARD-002`).
 
 ---
 
@@ -29,7 +29,7 @@ flowchart LR
 | [003-monorepo-merge-and-release-bridge](changes/003-monorepo-merge-and-release-bridge/proposal.md) | `M3` | Import open-source `core`, `runtime`, filtered `cli`, `client2` into `risense-ai/respire`; path CI + Release Fan-Out | `proposed` (`T03-01` done) |
 | [004-ci-guardrails-and-code-slimming](changes/004-ci-guardrails-and-code-slimming/proposal.md) | `M4` | Hard CI guardrails (deps, Zero-CJK, 600-line ratchet, route parity) + 4-app slimming | `proposed` |
 | [005-prototypes-and-e2e-acceptance](changes/005-prototypes-and-e2e-acceptance/proposal.md) | `M5` | 16 HTML prototypes, Mock API, Windows & cross-app E2E suite, Playwright PR UI Preview | `proposed` |
-| [006-multi-agent-automation-workflow](changes/006-multi-agent-automation-workflow/proposal.md) | `M6` | Six-role separation, `respire-process` CLI, Bot Evidence registration, nightly `LESSONS.md` audits | `proposed` (roles & CLI MVP done) |
+| [006-multi-agent-automation-workflow](changes/006-multi-agent-automation-workflow/proposal.md) | `M6` | Six-role separation, `respire-process` CLI, Bot Evidence registration, nightly `LESSONS.md` audits | `proposed` (`T06-01`–`T06-05` promoted & done in `M1`) |
 
 ---
 

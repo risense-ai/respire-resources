@@ -9,9 +9,10 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { classifyCard, fetchAllCards as fetchAllCardsFromApi } from "./lib/cards.mjs";
+import { cmdArchiveNext, cmdEvidenceRegister, cmdReleaseCheck } from "./lib/lifecycle.mjs";
 import { cmdPostVerdict, cmdReviewNext, cmdVerifyMerge } from "./lib/pr-review.mjs";
 
-const REPOS = ["risense-ai/respire-resources", "risense-ai/respire"];
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 function tryExec(bin, args, cwd = ROOT) {
@@ -40,90 +41,8 @@ function gh(args, input = null) {
   }).trim();
 }
 
-function parseCardMetadata(body) {
-  if (!body) return null;
-  const m = body.match(/<!--\s*respire-card\s+([\s\S]*?)-->/);
-  if (!m) return null;
-  const meta = {};
-  for (const rawLine of m[1].split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (!line || !line.includes(":")) continue;
-    const idx = line.indexOf(":");
-    const key = line.slice(0, idx).trim();
-    let val = line.slice(idx + 1).trim();
-    if (val.startsWith("[") && val.endsWith("]")) {
-      const inner = val.slice(1, -1).trim();
-      val = inner ? inner.split(",").map((s) => s.trim()).filter(Boolean) : [];
-    }
-    meta[key] = val;
-  }
-  if (!meta.id || !meta.change || !meta.milestone) return null;
-  if (!Array.isArray(meta.depends_on)) meta.depends_on = [];
-  return meta;
-}
-
 function fetchAllCards() {
-  const cards = [];
-  const byRef = new Map();
-  const byId = new Map();
-
-  for (const repo of REPOS) {
-    const list = JSON.parse(gh(["api", "--paginate", `repos/${repo}/issues?state=all&per_page=100`]));
-    for (const iss of list) {
-      if (iss.pull_request) continue;
-      const meta = parseCardMetadata(iss.body);
-      if (!meta) continue;
-      const ref = `${repo}#${iss.number}`;
-      const labels = new Set((iss.labels || []).map((l) => l.name));
-      const msMatch = meta.milestone.match(/^(M\d+)/);
-      const msKey = msMatch ? msMatch[1] : "M9";
-      const card = {
-        ref,
-        repo,
-        number: iss.number,
-        title: iss.title,
-        state: iss.state,
-        url: iss.html_url,
-        milestone: iss.milestone?.title || meta.milestone,
-        msKey,
-        labels,
-        meta,
-      };
-      cards.push(card);
-      byRef.set(ref, card);
-      byId.set(meta.id, card);
-    }
-  }
-
-  cards.sort((a, b) => {
-    if (a.msKey !== b.msKey) return a.msKey.localeCompare(b.msKey);
-    return a.meta.id.localeCompare(b.meta.id);
-  });
-
-  return { cards, byRef, byId };
-}
-
-function classifyCard(card, byRef) {
-  if (card.state === "closed") return { status: "DONE", reason: "Issue closed" };
-  if (card.labels.has("metadata:invalid")) return { status: "INVALID", reason: "Has metadata:invalid label" };
-  if (card.labels.has("agent:in-progress")) return { status: "IN_PROGRESS", reason: "Currently claimed by an Agent" };
-  if (card.labels.has("agent:verify")) return { status: "VERIFYING", reason: "Awaiting independent read-only Verifier" };
-
-  const unmetDeps = card.meta.depends_on.filter((depRef) => {
-    const dep = byRef.get(depRef);
-    return !dep || dep.state !== "closed";
-  });
-
-  if (card.labels.has("needs:human")) {
-    return { status: "NEEDS_HUMAN", reason: "Requires human Maintainer action/authorization", unmetDeps };
-  }
-  if (!card.labels.has("spec:approved")) {
-    return { status: "WAITING_APPROVAL", reason: "Awaiting Maintainer approval (missing spec:approved)", unmetDeps };
-  }
-  if (unmetDeps.length > 0) {
-    return { status: "BLOCKED", reason: `Waiting on upstream dependencies: ${unmetDeps.join(", ")}`, unmetDeps };
-  }
-  return { status: "READY", reason: "Approved and unblocked; ready to claim", unmetDeps: [] };
+  return fetchAllCardsFromApi(gh);
 }
 
 function cmdStatus() {
@@ -361,9 +280,9 @@ function cmdRoles(args) {
       triager:
         "You are Respire Triager: deduplicate Issues, draft English OpenSpec 4-file Change packages (or bug-card specs), and check DAG metadata; never apply spec:approved or modify product source code.",
       scribe:
-        "You are Respire Scribe: archive verified & merged Changes into openspec/specs/, update ROADMAP.md and LESSONS.md in English (filing guardrail Issues on 3+ recurrences), and ensure validate-openspec.mjs exits 0.",
+        "You are Respire Scribe: run `node process/scripts/respire-process.mjs archive-next` (stop on exit 2), merge verified Change deltas into openspec/specs/, update ROADMAP.md and LESSONS.md in English (filing guardrail Issues on 3+ recurrences), and ensure validate-openspec.mjs exits 0.",
       "release-manager":
-        "You are Respire Release Manager: given Maintainer's component version, verify green main CI, push runtime-v*/cli-v*/client2-v*, and verify Monorepo, legacy mirror, and NPM artifacts.",
+        "You are Respire Release Manager: given Maintainer's component version, run `node process/scripts/respire-process.mjs release-check <component> <version>`, verify green main CI, push runtime-v*/cli-v*/client2-v*, and verify Monorepo, legacy mirror, and NPM artifacts.",
     };
     if (roleName) {
       if (!prompts[roleName]) {
@@ -390,7 +309,8 @@ function cmdRoles(args) {
   console.log(fs.readFileSync(targetFile, "utf8"));
 }
 
-function cmdSync() {
+function cmdSync(opts = {}) {
+  const { bestEffort = false } = opts;
   const { cards, byRef } = fetchAllCards();
   let updated = 0;
 
@@ -400,14 +320,19 @@ function cmdSync() {
     const shouldBeReady = cls.status === "READY";
     const hasReady = card.labels.has("agent:ready");
 
-    if (shouldBeReady && !hasReady) {
-      gh(["issue", "edit", String(card.number), "--repo", card.repo, "--add-label", "agent:ready"]);
-      console.log(`Unlocked ${card.meta.id} (${card.ref}) -> +agent:ready`);
+    if (!shouldBeReady && !hasReady) continue;
+    if (shouldBeReady && hasReady) continue;
+    const flag = shouldBeReady ? "--add-label" : "--remove-label";
+    try {
+      gh(["issue", "edit", String(card.number), "--repo", card.repo, flag, "agent:ready"]);
+      console.log(`${shouldBeReady ? "Unlocked" : "Locked"} ${card.meta.id} (${card.ref}) -> ${shouldBeReady ? "+" : "-"}agent:ready`);
       updated += 1;
-    } else if (!shouldBeReady && hasReady) {
-      gh(["issue", "edit", String(card.number), "--repo", card.repo, "--remove-label", "agent:ready"]);
-      console.log(`Locked ${card.meta.id} (${card.ref}) -> -agent:ready (${cls.status})`);
-      updated += 1;
+    } catch (err) {
+      if (bestEffort) {
+        console.warn(`[WARN] Skipped ${card.ref} label update (token lacks repo scope; configure RESPIRE_BOT_TOKEN): ${err.message}`);
+      } else {
+        throw err;
+      }
     }
   }
 
@@ -418,8 +343,8 @@ function cmdSync() {
   ]);
   if (boardRes.ok) {
     if (boardRes.out) console.log(boardRes.out);
-  } else if (boardRes.code === 2) {
-    console.log("Skipped GitHub Project #1 sync (gh token lacks project scope).");
+  } else if (boardRes.code === 2 || bestEffort) {
+    console.log("Skipped GitHub Project #1 sync (token lacks org project scope; configure RESPIRE_BOT_TOKEN).");
   } else {
     console.error("Project sync failed:", boardRes.err || boardRes.out);
     process.exit(1);
@@ -540,9 +465,12 @@ switch (cmd) {
   case "next": cmdNext(rest.includes("--json")); break;
   case "claim": cmdClaim(rest[0]); break;
   case "mark-verify": cmdMarkVerify(rest[0]); break;
-  case "review-next": cmdReviewNext({ gh, fetchAllCards }, rest.includes("--json")); break;
+  case "review-next": cmdReviewNext({ gh, root: ROOT, fetchAllCards }, rest.includes("--json")); break;
   case "post-verdict": cmdPostVerdict({ gh }, rest); break;
-  case "verify-merge": cmdVerifyMerge({ gh }, rest); break;
+  case "verify-merge": cmdVerifyMerge({ gh, root: ROOT }, rest); break;
+  case "evidence-register": cmdEvidenceRegister({ gh, root: ROOT, fetchAllCards, cmdSync }, rest); break;
+  case "archive-next": cmdArchiveNext({ root: ROOT, fetchAllCards }, rest.includes("--json")); break;
+  case "release-check": cmdReleaseCheck({ gh }, rest); break;
   case "complete": cmdComplete(rest); break;
   case "sync": cmdSync(); break;
   case "approve-milestone": cmdApproveMilestone(rest[0]); break;
@@ -551,17 +479,20 @@ switch (cmd) {
     console.log([
       "Respire Process CLI - Deterministic Multi-Agent Orchestrator",
       "Usage: node process/scripts/respire-process.mjs <command> [options]",
-      "  preflight                              Verify tools, gh auth & sibling clones",
-      "  status                                 Summarize M1-M6 Milestones and DAG cards",
-      "  next [--json]                          Pick the single next READY card (Fail-Closed)",
-      "  claim <CARD-XXX | owner/repo#num>      Lock card (+agent:in-progress)",
-      "  mark-verify <CARD-XXX | ref>           Move card to agent:verify for review",
-      "  review-next [--json]                   Discover next open PR needing review",
-      "  post-verdict <pr-ref> --verdict <V> --summary \"<text>\"  Post head-SHA verdict",
-      "  verify-merge <owner/repo#pr | url>     Fail-closed pre-merge CI + verdict gate",
-      "  complete <CARD-XXX | ref> [--pr <url>] Close card, post evidence & sync DAG",
-      "  sync                                   Refresh agent:ready labels & Project #1",
-      "  approve-milestone <M1..M6|all>         Maintainer milestone approval helper",
+      "  preflight                                   Verify tools, gh auth & sibling clones",
+      "  status                                      Summarize M1-M6 Milestones and DAG cards",
+      "  next [--json]                               Pick the single next READY card (Fail-Closed)",
+      "  claim <CARD-XXX | owner/repo#num>           Lock card (+agent:in-progress)",
+      "  mark-verify <CARD-XXX | ref>                Move card to agent:verify for review",
+      "  review-next [--json]                        Discover next open PR needing review",
+      "  post-verdict <pr-ref> --verdict <V> --summary \"<text>\"   Post head-SHA verdict",
+      "  verify-merge <pr-ref> [--verdict-only] [--publish-status] Pre-merge verdict gate",
+      "  evidence-register --repo <r> --sha <sha> [--pr <n>]       Register post-merge Bot Evidence",
+      "  archive-next [--json]                       Discover next fully closed Change to archive",
+      "  release-check <runtime|cli|client2> <X.Y.Z> Pre-tag main CI & manifest gate",
+      "  complete <CARD-XXX | ref> [--pr <url>]      Close card, post evidence & sync DAG",
+      "  sync                                        Refresh agent:ready labels & Project #1",
+      "  approve-milestone <M1..M6|all>              Maintainer milestone approval helper",
       "  roles [implementer|bugfixer|verifier|triager|scribe|release-manager] [--one-line]",
     ].join("\n"));
     if (cmd && cmd !== "help" && cmd !== "--help") process.exit(1);

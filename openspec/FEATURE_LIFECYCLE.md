@@ -12,11 +12,11 @@
    OR opens a bug card referencing the violated spec + updates `openapi.yaml` / `prototypes/` / `test-cases/`
 3. [HUMAN FRONT GATE] Maintainer reviews spec + HTML prototype -> adds `spec:approved`
 4. Implementer / Bugfixer Agent claims card via `respire-process.mjs next` -> works in `.worktrees/<id>/`
-5. CI runs Path-Filtered build/tests + Guardrails + Zero-CJK + `ui-preview.yml` (if Client2 UI)
-6. Implementer runs `respire-process.mjs mark-verify <CARD>` -> Fresh Read-Only Verifier Agent discovers via `review-next`, audits & posts verdict (`post-verdict`)
-7. [HUMAN BACK GATE] Maintainer runs `verify-merge <owner/repo#pr>`, inspects UI Preview + verdict -> merges PR -> runs `complete`
-8. Scribe Agent merges delta spec into `openspec/specs/`, archives Change, and logs lessons (`LESSONS.md`);
-   Release Manager pushes independent component tag (`runtime-v*`, `cli-v*`, or `client2-v*`) when releasing
+5. CI runs Path-Filtered build/tests + Guardrails + Zero-CJK + Doc-Anchor check + `ui-preview.yml`
+6. Implementer runs `mark-verify <CARD>` -> Fresh Read-Only Verifier Agent runs `review-next`, audits & runs `post-verdict` (turning `verdict-gate` green)
+7. [HUMAN BACK GATE] Maintainer inspects UI Preview + verdict -> Approves PR (GitHub Auto-Merge completes merge; Bot `evidence-register` closes Issue & unlocks downstream DAG)
+8. Scribe Agent runs `archive-next`, merges delta specs into `openspec/specs/`, archives Change, and logs `LESSONS.md`;
+   Release Manager runs `release-check` and pushes independent component tag (`runtime-v*`, `cli-v*`, or `client2-v*`) when releasing
 ```
 
 ---
@@ -68,4 +68,5 @@
 Any agent session can self-dispatch cleanly with zero external orchestration:
 1. **Implementer / Bugfixer Loop**: `respire-process.mjs sync` -> `next` (exit `2` = stop) -> `claim <CARD>` -> `.worktrees/` fix/feature + tests -> PR -> `mark-verify <CARD>`.
 2. **Independent Reviewer / Verifier Loop**: `respire-process.mjs review-next` (exit `2` = stop) -> read-only diff, CI, OpenSpec, UI Preview, & `test-cases/` audit -> `post-verdict <owner/repo#pr> --verdict <PASS|CONDITIONAL|REJECT> --summary "..."`.
-3. **Maintainer Merge Loop**: `respire-process.mjs verify-merge <owner/repo#pr>` -> merge PR -> `complete <CARD> --pr <PR_URL>` (automatically closes card & unlocks downstream DAG cards).
+3. **Maintainer Merge Loop**: Approve PR (`verdict-gate` + CI gates auto-merge cleanly); Bot `evidence-register` records Evidence, closes card & unlocks downstream DAG (or run `complete <CARD> --pr <PR_URL>` manually for cross-repo cards when `RESPIRE_BOT_TOKEN` is unset).
+4. **Scribe & Release Loop**: `respire-process.mjs archive-next` -> archive finished Change; `respire-process.mjs release-check <component> <X.Y.Z>` -> tag & ship independently.

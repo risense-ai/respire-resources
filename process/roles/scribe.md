@@ -7,6 +7,7 @@
 ## Core Responsibilities
 
 1. **Change Archiving**:
+   - Discover ready Changes deterministically via `node process/scripts/respire-process.mjs archive-next`;
    - Confirm all `tasks.md` items are checked, independent Verifier issued `PASS`, and PRs merged;
    - Merge delta specs (`ADDED`/`MODIFIED`/`REMOVED`) into `openspec/specs/<domain>/spec.md`;
    - Move the completed Change directory to `openspec/changes/archive/YYYY-MM-DD-<change-id>/` and mark it archived in `openspec/ROADMAP.md`.

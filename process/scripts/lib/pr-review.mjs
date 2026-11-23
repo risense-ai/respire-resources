@@ -1,4 +1,5 @@
-// Self-dispatching PR review discovery, structured verdict posting, and pre-merge gating.
+// Self-dispatching PR review discovery, allowlist-checked verdict parsing, and pre-merge gating.
+import { isTrustedVerdictAuthor, loadAgentsConfig } from "./agents-config.mjs";
 
 const PR_REPOS = ["risense-ai/respire-resources", "risense-ai/respire", "risense-ai/respire-core"];
 const VALID_VERDICTS = new Set(["PASS", "CONDITIONAL", "REJECT"]);
@@ -14,17 +15,18 @@ export function parsePrRef(arg) {
   return null;
 }
 
-/** Query GitHub check-runs and commit status for a given PR head SHA. */
+/** Query GitHub check-runs and commit status for a given PR head SHA (excluding verdict-gate itself). */
 export function getHeadCiStatus(gh, repo, sha) {
   const checksData = JSON.parse(gh(["api", `repos/${repo}/commits/${sha}/check-runs?per_page=100`]));
   const statusData = JSON.parse(gh(["api", `repos/${repo}/commits/${sha}/status`]));
   const runs = checksData.check_runs || [];
-  const statuses = statusData.statuses || [];
+  const statuses = (statusData.statuses || []).filter((s) => s.context !== "verdict-gate");
   const totalChecks = runs.length + statuses.length;
 
   let pendingCount = 0;
-  let failedNames = [];
+  const failedNames = [];
   for (const run of runs) {
+    if (run.name === "verdict-gate") continue;
     if (run.status !== "completed") {
       pendingCount += 1;
     } else if (!GREEN_CONCLUSIONS.has(run.conclusion)) {
@@ -51,27 +53,28 @@ export function getHeadCiStatus(gh, repo, sha) {
   return { status: "none", summary: "no CI checks reported on head SHA", total_checks: 0 };
 }
 
-/** Find the newest <!-- respire-verdict: ... head=<sha> --> marker comment on a PR. */
-export function getLatestVerdict(gh, repo, prNumber, headSha) {
+/** Find the newest trusted <!-- respire-verdict: ... head=<sha> --> marker comment on a PR. */
+export function getLatestVerdict(gh, repo, prNumber, headSha, agentsCfg = null) {
   const comments = JSON.parse(gh(["api", "--paginate", `repos/${repo}/issues/${prNumber}/comments?per_page=100`]));
   for (let i = comments.length - 1; i >= 0; i -= 1) {
     const c = comments[i];
     const m = (c.body || "").match(/<!--\s*respire-verdict:\s*(PASS|CONDITIONAL|REJECT)\s+head=([a-f0-9]+)\s*-->/i);
-    if (m) {
-      return {
-        verdict: m[1].toUpperCase(),
-        head_sha: m[2].toLowerCase(),
-        matches_head: m[2].toLowerCase() === headSha.toLowerCase(),
-        author: c.user?.login || "unknown",
-        url: c.html_url,
-        created_at: c.created_at,
-      };
-    }
+    if (!m) continue;
+    const author = c.user?.login || "unknown";
+    if (agentsCfg && !isTrustedVerdictAuthor(agentsCfg, author)) continue;
+    return {
+      verdict: m[1].toUpperCase(),
+      head_sha: m[2].toLowerCase(),
+      matches_head: m[2].toLowerCase() === headSha.toLowerCase(),
+      author,
+      url: c.html_url,
+      created_at: c.created_at,
+    };
   }
   return null;
 }
 
-/** Match an open PR against an orchestration card by cross-repo ref, local ref, or CARD-XXX ID. */
+/** Match an open or merged PR against an orchestration card by cross-repo ref, local ref, or CARD-XXX ID. */
 export function matchLinkedCard(pr, repo, byRef, byId) {
   const text = `${pr.title}\n${pr.body || ""}\n${pr.head?.ref || ""}`;
   const crossRefMatch = text.match(/risense-ai\/(respire-resources|respire)#(\d+)/i);
@@ -92,11 +95,11 @@ export function matchLinkedCard(pr, repo, byRef, byId) {
   return null;
 }
 
-function buildReviewItem(gh, pr, repo, byRef, byId) {
+function buildReviewItem(gh, pr, repo, byRef, byId, agentsCfg) {
   const headSha = pr.head.sha;
   const card = matchLinkedCard(pr, repo, byRef, byId);
   const ci = getHeadCiStatus(gh, repo, headSha);
-  const verdict = getLatestVerdict(gh, repo, pr.number, headSha);
+  const verdict = getLatestVerdict(gh, repo, pr.number, headSha, agentsCfg);
   const repoDir = repo.split("/")[1];
   const prRef = `${repo}#${pr.number}`;
   const checkoutCmd =
@@ -155,7 +158,8 @@ function sortPendingReviews(items) {
 }
 
 /** Discover the next open non-draft PR awaiting an independent review on its head SHA. */
-export function cmdReviewNext({ gh, fetchAllCards }, asJson) {
+export function cmdReviewNext({ gh, root, fetchAllCards }, asJson) {
+  const agentsCfg = root ? loadAgentsConfig(root) : null;
   const { cards, byRef, byId } = fetchAllCards();
   const pendingReviews = [];
   const verdicted = [];
@@ -165,13 +169,10 @@ export function cmdReviewNext({ gh, fetchAllCards }, asJson) {
     const pulls = JSON.parse(gh(["api", "--paginate", `repos/${repo}/pulls?state=open&per_page=100`]));
     for (const pr of pulls) {
       if (pr.draft) continue;
-      const item = buildReviewItem(gh, pr, repo, byRef, byId);
+      const item = buildReviewItem(gh, pr, repo, byRef, byId, agentsCfg);
       if (item.linked_card) matchedCardIds.add(item.linked_card.id);
-      if (item.has_fresh_verdict) {
-        verdicted.push(item);
-      } else {
-        pendingReviews.push(item);
-      }
+      if (item.has_fresh_verdict) verdicted.push(item);
+      else pendingReviews.push(item);
     }
   }
 
@@ -192,9 +193,8 @@ export function cmdReviewNext({ gh, fetchAllCards }, asJson) {
       })),
       orphan_verify_cards: orphanVerifyCards,
     };
-    if (asJson) {
-      console.log(JSON.stringify(payload, null, 2));
-    } else {
+    if (asJson) console.log(JSON.stringify(payload, null, 2));
+    else {
       console.log("No open PRs awaiting independent review.");
       if (verdicted.length > 0) {
         console.log("Open PRs already verdicted on current head SHA (awaiting Maintainer merge):");
@@ -232,11 +232,11 @@ export function cmdReviewNext({ gh, fetchAllCards }, asJson) {
   console.log(`URL       : ${out.url}`);
   console.log(`Branch    : ${out.head_branch} -> ${out.base_branch} (head=${out.head_sha})`);
   console.log(`CI Status : ${out.ci_status} (${out.ci_summary})`);
-  if (out.linked_card) {
-    console.log(`Card/Spec : ${out.linked_card.id} (${out.linked_card.ref}) -> ${out.linked_card.spec_dir}`);
-  } else {
-    console.log("Card/Spec : none linked (inspect commit/PR description for scope)");
-  }
+  console.log(
+    out.linked_card
+      ? `Card/Spec : ${out.linked_card.id} (${out.linked_card.ref}) -> ${out.linked_card.spec_dir}`
+      : "Card/Spec : none linked (inspect commit/PR description for scope)"
+  );
   if (out.previous_verdict) {
     console.log(`Prev Verdict: ${out.previous_verdict.verdict} on older commit ${out.previous_verdict.head_sha}`);
   }
@@ -288,42 +288,103 @@ export function cmdPostVerdict({ gh }, args) {
   console.log(`Posted ${verdict} verdict on ${prRef.repo}#${prRef.number} (head=${headSha}).`);
 }
 
-/** Fail-closed pre-merge check requiring open non-draft PR, passing CI, and matching fresh verdict. */
-export function cmdVerifyMerge({ gh }, args) {
+function publishVerdictCommitStatus(gh, repo, sha, state, description) {
+  const clipped = description.slice(0, 140);
+  try {
+    gh([
+      "api",
+      "-X",
+      "POST",
+      `repos/${repo}/statuses/${sha}`,
+      "-f",
+      `state=${state}`,
+      "-f",
+      "context=verdict-gate",
+      "-f",
+      `description=${clipped}`,
+    ]);
+    console.log(`Published commit status verdict-gate=${state} on ${repo}@${sha.slice(0, 7)}`);
+  } catch (err) {
+    console.warn(`[WARN] Could not publish commit status verdict-gate (fork or read-only token): ${err.message}`);
+  }
+}
+
+/** Fail-closed pre-merge check requiring open non-draft PR, optional CI checks, and matching trusted verdict. */
+export function cmdVerifyMerge({ gh, root }, args) {
+  const verdictOnly = args.includes("--verdict-only");
+  const publishStatus = args.includes("--publish-status");
   const target = args.find((a) => !a.startsWith("--"));
   const prRef = parsePrRef(target);
   if (!prRef) {
-    console.error("Usage: respire-process.mjs verify-merge <owner/repo#pr | pr-url>");
+    console.error(
+      "Usage: respire-process.mjs verify-merge <owner/repo#pr | pr-url> [--verdict-only] [--publish-status]"
+    );
     process.exit(1);
   }
 
+  const agentsCfg = root ? loadAgentsConfig(root) : null;
   const pr = JSON.parse(gh(["api", `repos/${prRef.repo}/pulls/${prRef.number}`]));
   const headSha = pr.head.sha;
-  const ci = getHeadCiStatus(gh, prRef.repo, headSha);
-  const verdict = getLatestVerdict(gh, prRef.repo, prRef.number, headSha);
+  const prAuthor = pr.user?.login || "";
+  const ci = verdictOnly ? { status: "pass", summary: "skipped (--verdict-only)" } : getHeadCiStatus(gh, prRef.repo, headSha);
+  const verdict = getLatestVerdict(gh, prRef.repo, prRef.number, headSha, agentsCfg);
 
   const openOk = pr.state === "open" && !pr.draft;
   const ciOk = ci.status === "pass";
-  const verdictOk = Boolean(verdict && verdict.matches_head && (verdict.verdict === "PASS" || verdict.verdict === "CONDITIONAL"));
+  const distinctOk = !agentsCfg?.enforce_distinct_reviewer || !verdict || verdict.author.toLowerCase() !== prAuthor.toLowerCase();
+  const verdictOk = Boolean(
+    verdict && verdict.matches_head && distinctOk && (verdict.verdict === "PASS" || verdict.verdict === "CONDITIONAL")
+  );
 
   console.log(`=== Merge Gate Check: ${prRef.repo}#${prRef.number} ===`);
   console.log(`  [${openOk ? "PASS" : "FAIL"}] PR state: ${pr.state}${pr.draft ? " (draft)" : ""}`);
-  console.log(`  [${ciOk ? "PASS" : ci.status === "pending" ? "WAIT" : "FAIL"}] CI checks (${headSha.slice(0, 7)}): ${ci.summary}`);
+  if (!verdictOnly) {
+    console.log(`  [${ciOk ? "PASS" : ci.status === "pending" ? "WAIT" : "FAIL"}] CI checks (${headSha.slice(0, 7)}): ${ci.summary}`);
+  }
+
+  let statusState = "pending";
+  let statusDesc = `Awaiting Verifier verdict via post-verdict on ${headSha.slice(0, 7)}`;
   if (verdictOk) {
-    console.log(`  [PASS] Verifier verdict: ${verdict.verdict} on head ${verdict.head_sha.slice(0, 7)} by ${verdict.author}`);
+    console.log(`  [PASS] Trusted Verifier verdict: ${verdict.verdict} on ${headSha.slice(0, 7)} by ${verdict.author}`);
+    if (openOk && ciOk) {
+      statusState = "success";
+      statusDesc = `Verified (${verdict.verdict}) on ${headSha.slice(0, 7)} by ${verdict.author}`;
+    } else if (!openOk) {
+      statusState = "pending";
+      statusDesc = pr.draft ? "PR is still in draft" : `PR state is ${pr.state}`;
+    } else if (ci.status === "fail") {
+      statusState = "failure";
+      statusDesc = `CI failed: ${ci.summary}`;
+    }
   } else if (verdict && verdict.matches_head && verdict.verdict === "REJECT") {
     console.log(`  [FAIL] Verifier verdict: REJECT on head ${headSha.slice(0, 7)}`);
+    statusState = "failure";
+    statusDesc = `Verifier REJECT on ${headSha.slice(0, 7)} by ${verdict.author}`;
+  } else if (verdict && verdict.matches_head && !distinctOk) {
+    console.log(`  [FAIL] Distinct reviewer enforced: author ${verdict.author} matches PR author ${prAuthor}`);
+    statusState = "failure";
+    statusDesc = `Blocked: reviewer (${verdict.author}) must differ from PR author`;
   } else if (verdict) {
-    console.log(`  [WAIT] Verifier verdict is stale (comment head=${verdict.head_sha.slice(0, 7)}, PR head=${headSha.slice(0, 7)})`);
+    console.log(`  [WAIT] Verdict stale (comment=${verdict.head_sha.slice(0, 7)}, PR=${headSha.slice(0, 7)})`);
+    statusDesc = `Verdict stale for ${headSha.slice(0, 7)}; re-verify required`;
   } else {
-    console.log("  [WAIT] No independent Verifier verdict comment found on PR");
+    console.log("  [WAIT] No trusted Verifier verdict comment found on PR");
+  }
+
+  if (publishStatus) {
+    publishVerdictCommitStatus(gh, prRef.repo, headSha, statusState, statusDesc);
+    return;
   }
 
   if (openOk && ciOk && verdictOk) {
     console.log("Merge gate verdict: READY_TO_MERGE");
     return;
   }
-  if (pr.state !== "open" || ci.status === "fail" || (verdict && verdict.matches_head && verdict.verdict === "REJECT")) {
+  if (
+    pr.state !== "open" ||
+    ci.status === "fail" ||
+    (verdict && verdict.matches_head && (verdict.verdict === "REJECT" || !distinctOk))
+  ) {
     process.exit(1);
   }
   process.exit(2);

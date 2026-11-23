@@ -48,7 +48,7 @@ All working clones live under `D:\sources\repos-new\gh\1memory\`:
    - Attach the **exact GitHub Milestone** from the card, include **`Fixes <owner/repo>#<issue>`** in the PR body, and paste real command outputs.
    - Run `node process/scripts/respire-process.mjs mark-verify <CARD-XXX>` to move the Issue from `agent:in-progress` to `agent:verify`.
    - Hand off verification to a **fresh read-only Verifier session** (`process/roles/verifier.md`). Never grade your own PR.
-   - Once the Maintainer merges the PR, run `node process/scripts/respire-process.mjs complete <CARD-XXX> --pr <PR_URL>` to record Evidence, close cross-repo Issues (such as `CARD-002`), and unlock downstream cards.
+   - Once the Verifier posts a trusted `PASS` verdict (`verdict-gate` turns green) and the Maintainer approves/auto-merges the PR, `evidence-register.yml` automatically posts Evidence, closes the linked Issue, and unlocks downstream `agent:ready` cards (`node process/scripts/respire-process.mjs complete <CARD-XXX> --pr <PR_URL>` remains as manual/cross-repo fallback when `RESPIRE_BOT_TOKEN` is unset).
 
 ---
 

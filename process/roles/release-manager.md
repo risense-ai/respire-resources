@@ -15,7 +15,7 @@ Components inside `risense-ai/respire` release independently and **NEVER couple 
 | **`client2`** | `client2-vX.Y.Z` | Monorepo Release + `risense-ai/respire-client2` (`vX.Y.Z`, 6-platform packages, `SHA256SUMS`, `client-updates.json`, `release-notes.md`) |
 
 ## Execution Steps
-1. Verify `main` CI (`ci-gate` + component E2E) is green on the target commit;
+1. Run `node process/scripts/respire-process.mjs release-check <runtime|cli|client2> <X.Y.Z>` to confirm unused tag, manifest presence, and green `main` CI (`ci-gate`);
 2. Confirm release notes text is approved by Maintainer;
 3. Push tag: `git tag <component>-vX.Y.Z && git push origin <component>-vX.Y.Z`;
 4. Watch `release.yml` complete and verify assets/checksums across Monorepo, legacy mirrors, and NPM.

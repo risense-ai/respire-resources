@@ -30,5 +30,8 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Run OpenSpec & OpenAPI baseline validation
+      - name: Run OpenSpec, Doc-Anchor & Zero-CJK validation
         run: node process/scripts/validate-openspec.mjs
+
+      - name: Run respire-process unit suite
+        run: node --test process/scripts/respire-process.test.mjs

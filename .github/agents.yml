@@ -1,6 +1,12 @@
-# Trusted identities for Evidence registration and Maintainer approvals (Fail-Closed).
+# Trusted identities for Evidence registration, PR verdicts, and Maintainer approvals (Fail-Closed).
 maintainers:
   - luodaoyi
 
 trusted_bots:
   - github-actions[bot]
+
+# Optional GitHub logins for dedicated non-Maintainer AI Reviewer accounts.
+trusted_reviewers: []
+
+# Set to true when using a separate reviewer account so the PR author cannot post their own verdict.
+enforce_distinct_reviewer: false

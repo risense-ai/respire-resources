@@ -1,0 +1,57 @@
+name: Evidence Register
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: "Merged commit SHA on main"
+        required: true
+        type: string
+      pr_number:
+        description: "Optional PR number"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+concurrency:
+  group: evidence-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  evidence-register:
+    name: evidence-register
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Register trusted post-merge Evidence & sync DAG
+        env:
+          GH_TOKEN: ${{ secrets.RESPIRE_BOT_TOKEN || github.token }}
+          TARGET_SHA: ${{ inputs.commit_sha || github.sha }}
+          TARGET_PR: ${{ inputs.pr_number || '' }}
+        run: |
+          set -euo pipefail
+          extra_args=()
+          if [ -n "$TARGET_PR" ]; then
+            extra_args+=(--pr "$TARGET_PR")
+          fi
+          node process/scripts/respire-process.mjs evidence-register \
+            --repo risense-ai/respire-resources \
+            --sha "$TARGET_SHA" \
+            --run-id "${{ github.run_id }}" \
+            "${extra_args[@]}"

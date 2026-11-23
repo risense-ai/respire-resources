@@ -21,16 +21,19 @@ Modeled on `sebas-process`, exit codes are strict and Fail-Closed:
 | `mark-verify <card>` | Move card to `agent:verify` for independent Verifier | Rejects if Issue is closed |
 | `review-next [--json]` | Discover next open non-draft PR lacking fresh head-SHA verdict | Scans `respire-resources`, `respire`, `respire-core`; exits `2` when idle |
 | `post-verdict <pr-ref>` | Post `<!-- respire-verdict: <V> head=<sha> -->` comment on open PR | Validates enum (`PASS`/`CONDITIONAL`/`REJECT`) and open PR state |
-| `verify-merge <pr-ref>` | Final pre-merge gate check (`READY_TO_MERGE` check) | Requires open non-draft PR, passing CI on head SHA, and fresh `PASS`/`CONDITIONAL` verdict |
-| `complete <card>` | Close card, post PR evidence, and resync DAG + Project #1 | Runs `sync` to unlock downstream `agent:ready` cards |
+| `verify-merge <pr-ref>` | Pre-merge CI + verdict gate (`--verdict-only --publish-status`) | Enforces `.github/agents.yml` allowlist, open PR, and matching head-SHA verdict |
+| `evidence-register` *(M1)* | Post-merge Bot Evidence, Issue close & DAG/Project #1 sync | Requires merged PR into `main`, linked card, and idempotent `sha=` marker |
+| `archive-next [--json]` *(M1)* | Discover completed Changes ready for Scribe archiving | Exits `2` unless 100% of Change cards are closed |
+| `release-check <comp> <ver>` *(M1)* | Pre-tag release readiness check on `risense-ai/respire` | Verifies unused tag, green `ci-gate` on `main`, and manifest presence |
+| `complete <card>` | Manual fallback to close card, post evidence & resync DAG | Runs `sync` to unlock downstream `agent:ready` cards |
 | `approve-milestone <M*\|all>` | Maintainer helper toggling `spec:proposed` -> `spec:approved` | Evaluates `depends_on` before adding `agent:ready` |
-| `evidence-register <pr>` *(T06-03)* | Bot-only structured Evidence poster | Requires PR merged to `main`, closed Issue, green checks, idempotency |
 
 ## 3. Trusted Identity Allowlist & `LESSONS.md` Audit Loop
 
-- `.github/agents.yml` separates `maintainers: [luodaoyi]` and `trusted_bots: [github-actions[bot]]`.
-- `evidence-register.yml` triggers after green `main` CI runs and verifies author identity against `.github/agents.yml` before posting structured Evidence comments.
-- Periodic audit script scans recent `fix:` and `revert` commits, drafts new `LESSONS.md` entries, and files `guardrail` Issues whenever a failure category hits **≥ 3 occurrences**.
+- `.github/agents.yml` configures `maintainers`, `trusted_bots` (`github-actions[bot]`), optional `trusted_reviewers`, and `enforce_distinct_reviewer`.
+- `verdict-gate.yml` (and `respire/.github/workflows/verify.yml`) evaluates `verify-merge --verdict-only --publish-status` on PRs and verdict comments to drive the required `verdict-gate` commit status + GitHub Auto-Merge.
+- `evidence-register.yml` triggers after `main` merges, posts idempotent `<!-- respire-evidence: ... -->` comments, closes linked Issues, and unlocks downstream `agent:ready` cards (optionally using org secret `RESPIRE_BOT_TOKEN` for cross-repo writes and Project #1 updates).
+- Periodic audit script (`T06-06`) scans recent `fix:` and `revert` commits, drafts `LESSONS.md` entries, and files `guardrail` Issues whenever a failure category hits **>= 3 occurrences**.
 
 ## 4. Risks & Rollback
 
