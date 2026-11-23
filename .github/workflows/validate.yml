@@ -24,6 +24,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           persist-credentials: false
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -35,3 +36,25 @@ jobs:
 
       - name: Run respire-process unit suite
         run: node --test process/scripts/respire-process.test.mjs
+
+      - name: Check Runtime API compatibility and golden fixtures
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          trap 'rm -rf -- "$tmp"' EXIT
+          asset=oasdiff_1.39.0_linux_amd64.tar.gz
+          curl --fail --silent --show-error --location "https://github.com/oasdiff/oasdiff/releases/download/v1.39.0/$asset" --output "$tmp/$asset"
+          echo "71a85930728f367a2086077b7ae1411319421549d18473a3e8258b6451520433  $tmp/$asset" | sha256sum --check
+          tar -xzf "$tmp/$asset" -C "$tmp" oasdiff
+          spec=contracts/runtime-api/openapi.yaml
+          "$tmp/oasdiff" validate --allow-external-refs=false --fail-on INFO "$spec"
+          "$tmp/oasdiff" flatten --allow-external-refs=false --format json "$spec" > "$tmp/openapi.json"
+          node process/scripts/validate-runtime-fixtures.mjs "$tmp/openapi.json"
+          if [[ "$GITHUB_EVENT_NAME" == pull_request ]]; then
+            [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+            git show "$BASE_SHA:$spec" > "$tmp/base.yaml"
+            "$tmp/oasdiff" breaking --allow-external-refs=false --fail-on ERR "$tmp/base.yaml" "$spec"
+          fi

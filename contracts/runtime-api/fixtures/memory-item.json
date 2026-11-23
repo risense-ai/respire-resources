@@ -1,0 +1,14 @@
+{
+  "id": "memory-golden-001",
+  "space_id": "space-golden-001",
+  "title": "Transport example",
+  "content": "Sea breeze, café, and a saved note.",
+  "parent_id": null,
+  "category": "notes",
+  "tags": [
+    "portable",
+    "fixture"
+  ],
+  "created_at": "2026-11-23T00:00:00Z",
+  "updated_at": "2026-11-23T00:01:00Z"
+}

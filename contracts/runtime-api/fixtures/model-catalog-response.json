@@ -1,0 +1,22 @@
+{
+  "active_model_id": "model-golden-001",
+  "models": [
+    {
+      "id": "model-golden-001",
+      "display_name": "Sample model",
+      "legacy": false,
+      "engines": [
+        {
+          "engine": "cpu",
+          "available": true,
+          "reason": null
+        },
+        {
+          "engine": "gpu",
+          "available": false,
+          "reason": "No supported accelerator"
+        }
+      ]
+    }
+  ]
+}

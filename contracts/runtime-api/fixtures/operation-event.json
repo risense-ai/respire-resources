@@ -1,0 +1,18 @@
+{
+  "event": "failed",
+  "data": {
+    "operation_id": "op-golden-001",
+    "kind": "model_download",
+    "state": "failed",
+    "progress_percent": 42.5,
+    "error": {
+      "type": "about:blank",
+      "title": "Bad Gateway",
+      "status": 502,
+      "detail": "No configured model download source succeeded.",
+      "code": "model_mirror_fallback_exhausted",
+      "instance": "/v1/models/downloads",
+      "retryable": true
+    }
+  }
+}
