@@ -1,0 +1,660 @@
+openapi: 3.1.0
+info:
+  title: Respire Runtime Local API
+  version: 1.0.0-draft
+  summary: Canonical REST + SSE contract for respire-runtime, respire-cli, respire-client2, and plugins.
+  description: |
+    本契约是 Respire Runtime 的唯一外部接口真相源（参见 openspec/changes/002-runtime-openapi-v1-migration）。
+    所有客户端与插件必须通过 /v1/health 返回的 capabilities 能力位协商功能，禁止对比版本号。
+servers:
+  - url: http://127.0.0.1:{port}
+    description: Local Loopback Runtime Server
+    variables:
+      port:
+        default: "3930"
+tags:
+  - name: health
+    description: Health check and capability negotiation
+  - name: memories
+    description: Memory CRUD and semantic recall
+  - name: diary
+    description: Daily diary entries and timeline
+  - name: models
+    description: Model catalog, active assets, switch, and managed downloads
+  - name: operations
+    description: Asynchronous long-running operations and SSE streams
+
+paths:
+  /v1/health:
+    get:
+      operationId: getHealth
+      tags: [health]
+      summary: Query runtime health, identity, and supported capabilities
+      responses:
+        "200":
+          description: Runtime health and capability flags
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+        "503":
+          description: Runtime unavailable or initializing
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+
+  /v1/memories:
+    get:
+      operationId: listMemories
+      tags: [memories]
+      summary: List or paginate memories in active space
+      parameters:
+        - name: space_id
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Memory page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemoryListResponse"
+        "400":
+          description: Invalid query parameters
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+    post:
+      operationId: createMemory
+      tags: [memories]
+      summary: Store a memory entry via JSON body (zero CLI length limits)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMemoryRequest"
+      responses:
+        "201":
+          description: Memory created or updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemoryItem"
+        "400":
+          description: Validation error
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+
+  /v1/memories/{memoryId}:
+    parameters:
+      - name: memoryId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getMemory
+      tags: [memories]
+      summary: Get a memory by ID
+      responses:
+        "200":
+          description: Memory detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemoryItem"
+        "404":
+          description: Memory not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+    patch:
+      operationId: updateMemory
+      tags: [memories]
+      summary: Update a memory entry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMemoryRequest"
+      responses:
+        "200":
+          description: Updated memory
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemoryItem"
+        "404":
+          description: Memory not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+    delete:
+      operationId: deleteMemory
+      tags: [memories]
+      summary: Soft-delete a memory entry
+      responses:
+        "204":
+          description: Memory deleted
+        "404":
+          description: Memory not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+
+  /v1/memories/recall:
+    post:
+      operationId: recallMemories
+      tags: [memories]
+      summary: Run hybrid memory recall
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecallRequest"
+      responses:
+        "200":
+          description: Ranked recall hits
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecallResponse"
+        "400":
+          description: Invalid recall request
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+
+  /v1/diary:
+    get:
+      operationId: listDiaryEntries
+      tags: [diary]
+      summary: List diary entries by date range
+      parameters:
+        - name: space_id
+          in: query
+          schema:
+            type: string
+        - name: date
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: Diary entries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiaryListResponse"
+    post:
+      operationId: upsertDiaryEntry
+      tags: [diary]
+      summary: Create or append a diary entry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertDiaryRequest"
+      responses:
+        "200":
+          description: Saved diary entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiaryEntry"
+
+  /v1/models/catalog:
+    get:
+      operationId: getModelCatalog
+      tags: [models]
+      summary: Get authoritative model catalog and hardware engine availability matrix
+      responses:
+        "200":
+          description: Model catalog and engine availability
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelCatalogResponse"
+
+  /v1/models/active-assets:
+    get:
+      operationId: getActiveModelAssets
+      tags: [models]
+      summary: Inspect currently loaded model ID and locked filesystem paths (read-only)
+      responses:
+        "200":
+          description: Active model asset paths
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActiveModelAssetsResponse"
+
+  /v1/models/switch:
+    post:
+      operationId: switchModel
+      tags: [models]
+      summary: Start non-blocking model switch / index rebuild operation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SwitchModelRequest"
+      responses:
+        "202":
+          description: Switch operation accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperationAccepted"
+        "400":
+          description: Invalid model or unavailable engine
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+
+  /v1/models/downloads:
+    post:
+      operationId: startModelDownload
+      tags: [models]
+      summary: Start Runtime-managed streaming model download without stopping Runtime
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DownloadModelRequest"
+      responses:
+        "202":
+          description: Download operation accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperationAccepted"
+        "409":
+          description: Conflicting operation in progress
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+
+  /v1/operations/{operationId}:
+    parameters:
+      - name: operationId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getOperation
+      tags: [operations]
+      summary: Get current snapshot of an asynchronous operation
+      responses:
+        "200":
+          description: Operation status snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperationStatus"
+        "404":
+          description: Operation not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+    delete:
+      operationId: cancelOperation
+      tags: [operations]
+      summary: Request cooperative cancellation of a running operation
+      responses:
+        "202":
+          description: Cancellation acknowledged
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperationStatus"
+        "404":
+          description: Operation not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+
+  /v1/operations/{operationId}/events:
+    parameters:
+      - name: operationId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: streamOperationEvents
+      tags: [operations]
+      summary: Stream progress and completion events over Server-Sent Events (SSE)
+      responses:
+        "200":
+          description: SSE stream emitting progress, completed, failed, or cancelled events
+          content:
+            text/event-stream:
+              schema:
+                $ref: "#/components/schemas/OperationEvent"
+
+components:
+  schemas:
+    ProblemDetails:
+      type: object
+      required: [type, title, status, detail, code]
+      properties:
+        type:
+          type: string
+          format: uri-reference
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        code:
+          type: string
+        instance:
+          type: string
+        retryable:
+          type: boolean
+          default: false
+
+    HealthResponse:
+      type: object
+      required: [status, instance_id, capabilities]
+      properties:
+        status:
+          type: string
+          enum: [ready, starting, degraded]
+        instance_id:
+          type: string
+        pid:
+          type: integer
+        active_space_id:
+          type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+          description: Feature flags such as openapi.v1, sse.operations.v1, model.catalog.v2, model.active_assets, model.managed_download, host.transactions.v1
+
+    CreateMemoryRequest:
+      type: object
+      required: [content]
+      properties:
+        space_id:
+          type: string
+        title:
+          type: string
+        content:
+          type: string
+        parent_id:
+          type: [string, "null"]
+        category:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+
+    UpdateMemoryRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        content:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+
+    MemoryItem:
+      type: object
+      required: [id, content, created_at, updated_at]
+      properties:
+        id:
+          type: string
+        space_id:
+          type: string
+        title:
+          type: string
+        content:
+          type: string
+        parent_id:
+          type: [string, "null"]
+        category:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    MemoryListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/MemoryItem"
+        next_cursor:
+          type: [string, "null"]
+
+    RecallRequest:
+      type: object
+      required: [query]
+      properties:
+        query:
+          type: string
+        space_id:
+          type: string
+        top_k:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 10
+
+    RecallHit:
+      type: object
+      required: [memory, score]
+      properties:
+        memory:
+          $ref: "#/components/schemas/MemoryItem"
+        score:
+          type: number
+
+    RecallResponse:
+      type: object
+      required: [hits]
+      properties:
+        hits:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecallHit"
+
+    DiaryEntry:
+      type: object
+      required: [id, date, content, updated_at]
+      properties:
+        id:
+          type: string
+        date:
+          type: string
+          format: date
+        content:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+
+    DiaryListResponse:
+      type: object
+      required: [entries]
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/DiaryEntry"
+
+    UpsertDiaryRequest:
+      type: object
+      required: [date, content]
+      properties:
+        space_id:
+          type: string
+        date:
+          type: string
+          format: date
+        content:
+          type: string
+
+    EngineAvailability:
+      type: object
+      required: [engine, available]
+      properties:
+        engine:
+          type: string
+          enum: [cpu, gpu, npu, mlx]
+        available:
+          type: boolean
+        reason:
+          type: [string, "null"]
+
+    ModelCatalogEntry:
+      type: object
+      required: [id, display_name, engines]
+      properties:
+        id:
+          type: string
+        display_name:
+          type: string
+        legacy:
+          type: boolean
+        engines:
+          type: array
+          items:
+            $ref: "#/components/schemas/EngineAvailability"
+
+    ModelCatalogResponse:
+      type: object
+      required: [active_model_id, models]
+      properties:
+        active_model_id:
+          type: string
+        models:
+          type: array
+          items:
+            $ref: "#/components/schemas/ModelCatalogEntry"
+
+    ActiveModelAssetsResponse:
+      type: object
+      required: [active_model_id, active_paths]
+      properties:
+        active_model_id:
+          type: string
+        active_paths:
+          type: array
+          items:
+            type: string
+        locked:
+          type: boolean
+
+    SwitchModelRequest:
+      type: object
+      required: [model_id]
+      properties:
+        model_id:
+          type: string
+        engine:
+          type: string
+        variant:
+          type: string
+
+    DownloadModelRequest:
+      type: object
+      required: [model_id]
+      properties:
+        model_id:
+          type: string
+        engine:
+          type: string
+        mirror:
+          type: string
+
+    OperationAccepted:
+      type: object
+      required: [operation_id, status]
+      properties:
+        operation_id:
+          type: string
+        status:
+          type: string
+          enum: [pending, running]
+
+    OperationStatus:
+      type: object
+      required: [operation_id, kind, state]
+      properties:
+        operation_id:
+          type: string
+        kind:
+          type: string
+        state:
+          type: string
+          enum: [pending, running, completed, failed, cancelled]
+        progress_percent:
+          type: number
+          minimum: 0
+          maximum: 100
+        message:
+          type: string
+        error:
+          oneOf:
+            - $ref: "#/components/schemas/ProblemDetails"
+            - type: "null"
+
+    OperationEvent:
+      type: object
+      required: [event, data]
+      properties:
+        event:
+          type: string
+          enum: [progress, completed, failed, cancelled]
+        data:
+          $ref: "#/components/schemas/OperationStatus"

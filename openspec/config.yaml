@@ -1,0 +1,43 @@
+schema: openspec-v1
+project: respire
+ssot_repo: risense-ai/respire-resources
+
+repositories:
+  resources:
+    name: risense-ai/respire-resources
+    visibility: public
+    role: OpenSpec specs, OpenAPI 3.1 + Core ABI contracts, HTML prototypes, E2E test-cases, governance
+  core:
+    name: risense-ai/respire-core
+    visibility: private
+    role: Pure in-memory retrieval/embedding/clustering engine & C ABI
+  monorepo:
+    name: risense-ai/respire
+    visibility: public
+    role: Open-source Monorepo hosting apps/runtime, apps/cli, apps/client2, generated packages/runtime-sdk-*
+  legacy_release_mirrors:
+    - risense-ai/respire-runtime
+    - risense-ai/respire-cli
+    - risense-ai/respire-client2
+
+rules:
+  language: zh-CN prose with English technical identifiers and RFC 2119 keywords (MUST, SHALL, SHOULD)
+  max_doc_lines: 400
+  max_code_lines: 600
+  required_change_artifacts:
+    - proposal.md
+    - design.md
+    - tasks.md
+    - specs/*/spec.md
+  delta_headings:
+    - "## ADDED Requirements"
+    - "## MODIFIED Requirements"
+    - "## REMOVED Requirements"
+  scenario_heading_prefix: "#### Scenario:"
+  scenario_keywords:
+    - GIVEN
+    - WHEN
+    - THEN
+  capability_negotiation_only: true
+  forbid_version_string_coupling: true
+  forbid_line_number_anchors_in_docs: true

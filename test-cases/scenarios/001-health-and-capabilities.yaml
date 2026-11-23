@@ -1,0 +1,28 @@
+id: E2E-001
+title: Runtime health check and capability negotiation
+related_spec: openspec/changes/002-runtime-openapi-v1-migration/specs/runtime-api/spec.md
+platform: [linux, macos, windows]
+
+preconditions:
+  - Fresh isolated workspace directory
+  - Start rsrs-runtime on loopback port
+
+steps:
+  - name: Probe OpenAPI v1 health endpoint
+    request:
+      method: GET
+      path: /v1/health
+    expect:
+      status: 200
+      json_has_keys:
+        - status
+        - instance_id
+        - capabilities
+      capabilities_include:
+        - openapi.v1
+        - sse.operations.v1
+
+  - name: Verify non-version-coupled capability check
+    assert:
+      - Client resolves feature availability strictly from capabilities array
+      - No HTTP 5xx or process crash occurs during startup probe

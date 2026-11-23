@@ -1,0 +1,86 @@
+# yaml-language-server: $schema=https://storage.googleapis.com/coderabbit_public_assets/schema.v2.json
+# Respire 统一 CodeRabbit 审查模板（分发至 respire 与 respire-core）
+language: zh-CN
+tone_instructions: >-
+  优先检查逻辑正确性、四层架构边界越界、锁粒度、数据丢失与安全隐患。
+  用简洁中文指出具体后果与最小修改方案，避免琐碎格式说教。
+
+reviews:
+  profile: assertive
+  request_changes_workflow: true
+  high_level_summary: true
+  poem: false
+  path_filters:
+    - '!**/node_modules/**'
+    - '!**/target/**'
+    - '!**/dist/**'
+    - '!**/vendor/**'
+    - '!**/packages/runtime-sdk-*/**'
+
+  path_instructions:
+    - path: 'apps/runtime/**/*.rs'
+      instructions: |
+        1. 严禁新增 `.unwrap()` 或 `.expect()`。
+        2. 禁止在冷加载/下载链路重复计算多次 SHA-256；禁止用 `store.all()` 做计数。
+        3. 禁止引入 CLI Clap 二次语法树、TTY 交互提示或宿主 IDE 注入逻辑。
+        4. 新建或拆分后的 Rust 文件超过 600 行应要求继续拆分。
+        5. 新增 HTTP 路由必须与 `contracts/runtime-api/openapi.yaml` 保持一致。
+
+    - path: 'apps/cli/**/*.rs'
+      instructions: |
+        1. `apps/cli` 是超薄客户端，严禁引入 `storage` / `core-sdk` / `app` / `axum` 等服务端依赖或直连业务 SQLite。
+        2. 严禁在模型下载、非活跃模型卸载或配置写入路径停止 Runtime 或写 `Paused`。
+        3. 与 Runtime 通信只能通过 `capabilities` 能力位协商，严禁比较版本号字符串。
+
+    - path: 'apps/client2/**/*.go'
+      instructions: |
+        1. 严禁在 `go.mod` 引入 `go-sqlite3` 或任何 SQLite 驱动。
+        2. 严禁在 Go 宿主层重写账户、空间、模型下载或迁移状态机，也禁止拼接 `cli.exec` 参数表。
+        3. 检查 goroutine 取消退出路径与 HTTP 超时控制（防止下载/SSE 泄漏）。
+
+    - path: 'apps/client2/**/frontend/**/*.{js,html,css}'
+      instructions: |
+        1. 所有用户可见文本必须同时支持中英文（`i18n`），控件尺寸使用 `rem`（禁止写死 `px`）。
+        2. 禁止在全局定时器中恢复高频全量状态或 `tree-cure` 轮询；长任务进度必须消费 SSE 或轻量接口。
+
+    - path: 'openspec/**/*.md'
+      instructions: |
+        1. 非归档 Markdown 文件严禁超过 400 行。
+        2. 增量 `spec.md` 必须包含 `MUST`/`SHALL` 与 `#### Scenario:`（GIVEN/WHEN/THEN）。
+        3. 引用文档用 `§节号` 或文件路径，禁止硬编码源码行号锚点。
+
+    - path: '.github/workflows/**'
+      instructions: |
+        1. `permissions` 必须最小化，仅申请实际所需权限。
+        2. 涉及执行未审核 PR 代码的预览任务（如 UI Preview）严禁持有仓库写权限或高权限 Token。
+        3. 严禁放宽架构护栏检查、OpenAPI 破坏性检查或合并门禁。
+
+  auto_review:
+    enabled: true
+    auto_incremental_review: true
+    auto_pause_after_reviewed_commits: 0
+    drafts: false
+    base_branches:
+      - 'main'
+
+  finishing_touches:
+    docstrings:
+      enabled: false
+    unit_tests:
+      enabled: false
+    autofix:
+      enabled: false
+    fix_ci:
+      enabled: false
+    simplify:
+      enabled: false
+
+  pre_merge_checks:
+    title:
+      mode: warning
+      requirements: '使用 Conventional Commits 格式：`type(scope): subject`'
+    description:
+      mode: warning
+
+chat:
+  auto_reply: true

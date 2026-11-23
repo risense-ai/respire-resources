@@ -1,0 +1,20 @@
+# OS / Editors
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# Node / Playwright / Preview Artifacts
+node_modules/
+test-results/
+playwright-report/
+.playwright/
+*.log
+
+# Temp & Local Worktrees
+.tmp/
+tmp/
+.worktrees/
