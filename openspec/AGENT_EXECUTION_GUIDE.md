@@ -1,6 +1,6 @@
 # Multi-Agent Cold-Start Execution Guide
 
-> **Goal**: Any newly started AI Agent (Codex / Claude Code / Antigravity / Cursor) MUST be able to read this file and drive `001`–`006` or Day-2 feature work directly via `process/scripts/respire-process.mjs` with zero prior conversation context. See **[FEATURE_LIFECYCLE.md](FEATURE_LIFECYCLE.md)** for post-setup feature recipes and **[../process/CODEX_PROMPTS.md](../process/CODEX_PROMPTS.md)** for copy-paste Codex prompts.
+> **Goal**: Any newly started AI Agent (ChatGPT Dots, Codex, Claude Code, Antigravity, Cursor) MUST be able to read this file and drive `001`–`006` or Day-2 feature work directly via `process/scripts/respire-process.mjs` with zero prior conversation context. For ChatGPT Dots single-session automation, paste the standing prompt in **[../process/DOTS_MASTER_PROMPT.md](../process/DOTS_MASTER_PROMPT.md)**; see **[FEATURE_LIFECYCLE.md](FEATURE_LIFECYCLE.md)** for Day-2 recipes.
 
 ---
 
@@ -21,11 +21,13 @@ All working clones live under `D:\sources\repos-new\gh\1memory\`:
 
 ## 2. Mandatory 6-Step Agent Execution Protocol
 
-1. **Select the next task deterministically (NEVER pick tasks ad-hoc)**:
+1. **Run environment preflight & select the next task deterministically (NEVER pick tasks ad-hoc)**:
    ```sh
    cd respire-resources
-   node process/scripts/respire-process.mjs status   # View M1-M6 Milestone & DAG status
-   node process/scripts/respire-process.mjs next     # Pick the single next READY card (Fail-Closed)
+   node process/scripts/respire-process.mjs preflight # Verify tools, gh auth & sibling clones
+   node process/scripts/respire-process.mjs sync      # Refresh agent:ready DAG labels & Project #1
+   node process/scripts/respire-process.mjs status    # View M1-M6 Milestone & DAG status
+   node process/scripts/respire-process.mjs next      # Pick the single next READY card (Fail-Closed)
    ```
    - If `next` exits with code `2` (waiting for `spec:approved` or `needs:human`), **STOP immediately** and ask the Maintainer.
 2. **Claim and lock the Issue**:
@@ -46,6 +48,7 @@ All working clones live under `D:\sources\repos-new\gh\1memory\`:
    - Attach the **exact GitHub Milestone** from the card, include **`Fixes <owner/repo>#<issue>`** in the PR body, and paste real command outputs.
    - Run `node process/scripts/respire-process.mjs mark-verify <CARD-XXX>` to move the Issue from `agent:in-progress` to `agent:verify`.
    - Hand off verification to a **fresh read-only Verifier session** (`process/roles/verifier.md`). Never grade your own PR.
+   - Once the Maintainer merges the PR, run `node process/scripts/respire-process.mjs complete <CARD-XXX> --pr <PR_URL>` to record Evidence, close cross-repo Issues (such as `CARD-002`), and unlock downstream cards.
 
 ---
 

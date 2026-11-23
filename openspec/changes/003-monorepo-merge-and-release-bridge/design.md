@@ -23,7 +23,7 @@ risense-ai/respire/
 
 ## 2. Filtered History Import (`git filter-repo`)
 
-Run inside isolated temporary clones (never modify clean local master clones):
+Prerequisite: install `git-filter-repo` if missing (`pip install --user git-filter-repo`, `brew install git-filter-repo`, or `apt-get install git-filter-repo`). Run inside isolated temporary clones (never modify clean local master clones):
 
 1. **`respire-runtime` -> `apps/runtime/`**:
    `git filter-repo --to-subdirectory-filter apps/runtime --invert-paths --path contracts/ --path .github/workflows/`

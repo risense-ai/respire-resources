@@ -1,6 +1,6 @@
-# ChatGPT Codex Prompt Pack (`process/CODEX_PROMPTS.md`)
+# Multi-Session Codex Prompt Pack (`process/CODEX_PROMPTS.md`)
 
-> Ready-to-paste English prompts for driving Respire's autonomous `001`–`006` rollout and Day-2 iteration inside ChatGPT Codex / multi-agent sessions. Always point the workspace root to `D:\sources\repos-new\gh\1memory`.
+> **Using ChatGPT Dots (Single Always-On Session)?** Use **[DOTS_MASTER_PROMPT.md](DOTS_MASTER_PROMPT.md)** instead—it combines preflight, implementation, CI/CodeRabbit fixes, verification, and cross-repo completion into ONE standing prompt powered directly by Dots' own model. Use the role-split prompts below only when running separate manual Codex sessions.
 
 ---
 

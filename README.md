@@ -2,7 +2,7 @@
 
 **Single Source of Truth (SSOT) for Respire**: centralized home for cross-component OpenSpec specifications, machine-readable contracts (OpenAPI 3.1 + Core ABI), high-fidelity HTML prototypes, language-agnostic E2E test suites, and multi-agent engineering governance.
 
-> **New AI Agent entering the workspace?** Start with **[openspec/AGENT_EXECUTION_GUIDE.md](openspec/AGENT_EXECUTION_GUIDE.md)** and **[process/roles/README.md](process/roles/README.md)**, then run `node process/scripts/respire-process.mjs next`.
+> **Using ChatGPT Dots (Single-Session Always-On Agent)?** Start with **[process/DOTS_MASTER_PROMPT.md](process/DOTS_MASTER_PROMPT.md)** — it contains ONE standing Master Prompt plus setup checklist. For general Agent rules, see **[openspec/AGENT_EXECUTION_GUIDE.md](openspec/AGENT_EXECUTION_GUIDE.md)** and **[process/roles/README.md](process/roles/README.md)**.
 
 ---
 
@@ -40,7 +40,7 @@ All documentation, specifications, source code, comments, scripts, workflows, co
 - **[contracts/](contracts/README.md)** — Canonical API & ABI contracts ([OpenAPI 3.1](contracts/runtime-api/openapi.yaml), [OpenAPI Migration Playbook](contracts/OPENAPI_MIGRATION_PLAYBOOK.md), [Core ABI](contracts/core-abi/README.md))
 - **[prototypes/](prototypes/README.md)** — High-fidelity HTML prototypes, [PR UI Preview Spec](prototypes/UI_PREVIEW_SPEC.md), tokens, and Mock Runtime
 - **[test-cases/](test-cases/README.md)** — Black-box E2E scenarios & [E2E Acceptance Architecture](test-cases/DESIGN.md)
-- **[process/](process/README.md)** — [Role playbooks](process/roles/README.md), [Codex Prompt Pack](process/CODEX_PROMPTS.md), [CI & Quality Gates](process/CI_AND_QUALITY_GATES.md), templates, and scripts
+- **[process/](process/README.md)** — **[ChatGPT Dots Master Prompt](process/DOTS_MASTER_PROMPT.md)**, [Role playbooks](process/roles/README.md), [CI & Quality Gates](process/CI_AND_QUALITY_GATES.md), templates, and scripts
 - **[AGENTS.md](AGENTS.md)** & **[LESSONS.md](LESSONS.md)** — Global AI engineering constitution and lessons ledger
 
 ---

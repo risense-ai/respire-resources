@@ -8,13 +8,28 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const REPOS = ["risense-ai/respire-resources", "risense-ai/respire"];
-const ROOT = path.resolve(
-  path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1")),
-  "..",
-  ".."
-);
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+
+function tryExec(bin, args, cwd = ROOT) {
+  try {
+    const out = execFileSync(bin, args, {
+      cwd,
+      encoding: "utf8",
+      stdio: ["pipe", "pipe", "pipe"],
+    }).trim();
+    return { ok: true, out, err: "", code: 0 };
+  } catch (e) {
+    return {
+      ok: false,
+      out: String(e.stdout || "").trim(),
+      err: String(e.stderr || e.message || "").trim(),
+      code: typeof e.status === "number" ? e.status : 1,
+    };
+  }
+}
 
 function gh(args, input = null) {
   return execFileSync("gh", args, {
@@ -377,8 +392,154 @@ function cmdRoles(args) {
   console.log(fs.readFileSync(targetFile, "utf8"));
 }
 
+function cmdSync() {
+  const { cards, byRef } = fetchAllCards();
+  let updated = 0;
+
+  for (const card of cards) {
+    if (card.state !== "open") continue;
+    const cls = classifyCard(card, byRef);
+    const shouldBeReady = cls.status === "READY";
+    const hasReady = card.labels.has("agent:ready");
+
+    if (shouldBeReady && !hasReady) {
+      gh(["issue", "edit", String(card.number), "--repo", card.repo, "--add-label", "agent:ready"]);
+      console.log(`Unlocked ${card.meta.id} (${card.ref}) -> +agent:ready`);
+      updated += 1;
+    } else if (!shouldBeReady && hasReady) {
+      gh(["issue", "edit", String(card.number), "--repo", card.repo, "--remove-label", "agent:ready"]);
+      console.log(`Locked ${card.meta.id} (${card.ref}) -> -agent:ready (${cls.status})`);
+      updated += 1;
+    }
+  }
+
+  console.log(`Issue DAG label sync complete (${updated} card(s) updated).`);
+  const boardRes = tryExec(process.execPath, [
+    path.join(ROOT, "process", "scripts", "sync-project-board.mjs"),
+    "--apply",
+  ]);
+  if (boardRes.ok) {
+    if (boardRes.out) console.log(boardRes.out);
+  } else if (boardRes.code === 2) {
+    console.log("Skipped GitHub Project #1 sync (gh token lacks project scope).");
+  } else {
+    console.error("Project sync failed:", boardRes.err || boardRes.out);
+    process.exit(1);
+  }
+}
+
+function cmdComplete(args) {
+  const target = args.find((a) => !a.startsWith("--"));
+  if (!target) {
+    console.error("Usage: respire-process.mjs complete <CARD-XXX | owner/repo#num> [--pr <url>]");
+    process.exit(1);
+  }
+  const prIdx = args.indexOf("--pr");
+  const prUrl = prIdx >= 0 ? args[prIdx + 1] : null;
+  if (prIdx >= 0 && !prUrl) {
+    console.error("Missing value after --pr");
+    process.exit(1);
+  }
+
+  const { byRef, byId } = fetchAllCards();
+  const card = byId.get(target.toUpperCase()) || byRef.get(target);
+  if (!card) {
+    console.error(`Card not found: ${target}`);
+    process.exit(1);
+  }
+
+  const commentLines = [
+    `Completed ${card.meta.id} (${card.ref}) under milestone \`${card.milestone}\`.`,
+    prUrl ? `- Merged PR / Evidence: ${prUrl}` : "- Verified and closed via `respire-process.mjs complete`.",
+  ];
+  gh(["issue", "comment", String(card.number), "--repo", card.repo, "--body", commentLines.join("\n")]);
+
+  const rmArgs = ["issue", "edit", String(card.number), "--repo", card.repo];
+  let hasRemovals = false;
+  for (const lbl of ["agent:in-progress", "agent:verify", "agent:ready"]) {
+    if (card.labels.has(lbl)) {
+      rmArgs.push("--remove-label", lbl);
+      hasRemovals = true;
+    }
+  }
+  if (hasRemovals) gh(rmArgs);
+
+  if (card.state === "open") {
+    gh(["issue", "close", String(card.number), "--repo", card.repo]);
+    console.log(`Closed ${card.meta.id} (${card.ref}).`);
+  } else {
+    console.log(`${card.meta.id} (${card.ref}) already closed; recorded evidence.`);
+  }
+
+  cmdSync();
+}
+
+function cmdPreflight() {
+  console.log(`=== Respire Environment Preflight (${process.platform}) ===`);
+  let failed = false;
+
+  const nodeVer = process.version;
+  console.log(`  [OK]   node: ${nodeVer}`);
+
+  const gitRes = tryExec("git", ["--version"]);
+  if (gitRes.ok) {
+    console.log(`  [OK]   ${gitRes.out}`);
+  } else {
+    console.error("  [FAIL] git is not installed");
+    failed = true;
+  }
+
+  const ghRes = tryExec("gh", ["auth", "status"]);
+  const ghText = `${ghRes.out}\n${ghRes.err}`;
+  if (ghRes.ok) {
+    const hasProject = /\bproject\b/.test(ghText);
+    console.log(`  [OK]   gh authenticated (project scope: ${hasProject ? "yes" : "missing"})`);
+  } else {
+    console.error("  [FAIL] gh CLI is not authenticated. Run: gh auth login");
+    failed = true;
+  }
+
+  const filterRepoRes = tryExec("git", ["filter-repo", "--version"]);
+  if (filterRepoRes.ok) {
+    console.log(`  [OK]   git-filter-repo: ${filterRepoRes.out}`);
+  } else {
+    console.log("  [WARN] git-filter-repo not found (required in M3; install via: pip install --user git-filter-repo)");
+  }
+
+  const parentDir = path.dirname(ROOT);
+  const siblings = ["respire", "respire-core", "respire-runtime", "respire-cli", "respire-client2"];
+  const missingClones = [];
+  console.log(`Workspace root: ${parentDir}`);
+  for (const name of siblings) {
+    const dir = path.join(parentDir, name);
+    if (fs.existsSync(path.join(dir, ".git"))) {
+      console.log(`  [OK]   sibling repo present: ${name}`);
+    } else {
+      console.log(`  [MISS] sibling repo missing: ${name}`);
+      missingClones.push(`git clone https://github.com/risense-ai/${name}.git "${dir}"`);
+    }
+  }
+  if (missingClones.length > 0) {
+    console.log("\nClone missing sibling repos before starting cross-repo work:");
+    for (const cmd of missingClones) console.log(`  ${cmd}`);
+  }
+
+  const valRes = tryExec(process.execPath, [path.join(ROOT, "process", "scripts", "validate-openspec.mjs")]);
+  if (valRes.ok) {
+    console.log(`  [OK]   ${valRes.out}`);
+  } else {
+    console.error(`  [FAIL] validate-openspec.mjs failed:\n${valRes.err || valRes.out}`);
+    failed = true;
+  }
+
+  if (failed) process.exit(1);
+}
+
 const [, , cmd, ...rest] = process.argv;
 switch (cmd) {
+  case "preflight":
+    cmdPreflight();
+    break;
   case "status":
     cmdStatus();
     break;
@@ -391,6 +552,12 @@ switch (cmd) {
   case "mark-verify":
     cmdMarkVerify(rest[0]);
     break;
+  case "complete":
+    cmdComplete(rest);
+    break;
+  case "sync":
+    cmdSync();
+    break;
   case "approve-milestone":
     cmdApproveMilestone(rest[0]);
     break;
@@ -402,10 +569,13 @@ switch (cmd) {
       [
         "Respire Process CLI - Deterministic Multi-Agent Orchestrator",
         "Usage:",
+        "  node process/scripts/respire-process.mjs preflight",
         "  node process/scripts/respire-process.mjs status",
         "  node process/scripts/respire-process.mjs next [--json]",
         "  node process/scripts/respire-process.mjs claim <CARD-XXX | owner/repo#num>",
         "  node process/scripts/respire-process.mjs mark-verify <CARD-XXX | owner/repo#num>",
+        "  node process/scripts/respire-process.mjs complete <CARD-XXX | owner/repo#num> [--pr <url>]",
+        "  node process/scripts/respire-process.mjs sync",
         "  node process/scripts/respire-process.mjs approve-milestone <M1|M2|M3|M4|M5|M6|all>",
         "  node process/scripts/respire-process.mjs roles [implementer|verifier|triager|scribe|release-manager] [--one-line]",
       ].join("\n")
