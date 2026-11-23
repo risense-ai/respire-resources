@@ -1,27 +1,27 @@
-# Day-2 Feature & Change Lifecycle
+# Day-2 Feature, Bugfix & Change Lifecycle
 
-> This playbook defines how Respire ships new features, UI changes, CLI/TUI changes, and new model engines **after `001`–`006` baseline governance is active**—without ever drifting back into ad-hoc patches.
+> This playbook defines how ANY agent or contributor ships new features, fixes bugs, updates UI/CLI screens, and adds model engines **after `001`–`006` baseline governance is active**—without drifting back into ad-hoc patches.
 
 ---
 
 ## 1. Standard Eight-Step Autonomous Loop
 
 ```text
-1. Maintainer Intent (1 sentence describing user outcome)
-2. Triager/Spec Codex drafts OpenSpec Change (`proposal.md`, `design.md`, `tasks.md`, `specs/*/spec.md`)
-   + updates `openapi.yaml` / `prototypes/` / `test-cases/` stubs + opens Milestone Issue(s)
+1. Maintainer Intent or Bug Report (user outcome or broken spec behavior)
+2. Triager Agent drafts OpenSpec Change (`proposal.md`, `design.md`, `tasks.md`, `specs/<domain>/spec.md`)
+   OR opens a bug card referencing the violated spec + updates `openapi.yaml` / `prototypes/` / `test-cases/`
 3. [HUMAN FRONT GATE] Maintainer reviews spec + HTML prototype -> adds `spec:approved`
-4. Implementer Codex claims card via `respire-process.mjs next` -> works in `.worktrees/<id>/`
+4. Implementer / Bugfixer Agent claims card via `respire-process.mjs next` -> works in `.worktrees/<id>/`
 5. CI runs Path-Filtered build/tests + Guardrails + Zero-CJK + `ui-preview.yml` (if Client2 UI)
-6. Implementer runs `respire-process.mjs mark-verify <CARD>` -> Fresh Read-Only Verifier Codex audits & runs `test-cases/`
-7. [HUMAN BACK GATE] Maintainer inspects UI Preview screenshots/MP4 + Verifier `PASS` verdict -> merges PR
-8. Scribe Codex merges delta spec into `openspec/specs/`, archives Change, and logs lessons (`LESSONS.md`);
+6. Implementer runs `respire-process.mjs mark-verify <CARD>` -> Fresh Read-Only Verifier Agent discovers via `review-next`, audits & posts verdict (`post-verdict`)
+7. [HUMAN BACK GATE] Maintainer runs `verify-merge <owner/repo#pr>`, inspects UI Preview + verdict -> merges PR -> runs `complete`
+8. Scribe Agent merges delta spec into `openspec/specs/`, archives Change, and logs lessons (`LESSONS.md`);
    Release Manager pushes independent component tag (`runtime-v*`, `cli-v*`, or `client2-v*`) when releasing
 ```
 
 ---
 
-## 2. Three Concrete Change Recipes
+## 2. Change, Bugfix & Review Recipes
 
 ### Recipe A: Adjusting a Client2 UI Screen or Interaction
 
@@ -52,3 +52,20 @@
      - Register the model entry inside `apps/runtime/` single authoritative catalog (`GET /v1/models/catalog`), obeying **1x streaming SHA-256**, foreground preemption, non-blocking `model.switch`, and clean `pending` rollback.
   3. **Zero Client Hardcoding**: `apps/cli` and `apps/client2` MUST discover the new model dynamically via `/v1/models/catalog` and `/v1/models/active-assets` with zero hardcoded model lists or client-side downloaders.
   4. **Verification & Release**: Verifier runs `test-cases/scenarios/` model switch, cancel, and concurrent `recall` tests; Release Manager ships `runtime-vX.Y.Z`.
+
+### Recipe D: Fixing a Bug (Regression-First Bugfix Workflow)
+
+- **Case 1 — Lightweight Bugfix (Existing Spec Already Defines Correct Behavior)**:
+  1. **Bug Card (`respire-card`)**: Open or claim an Issue citing the exact violated `openspec/specs/<domain>/spec.md` § section and reproduction steps (no new 4-file OpenSpec Change needed when contracts and UX do not change). Wait for Maintainer `spec:approved`.
+  2. **Fail-First Regression Test**: Inside `../.worktrees/<card-id>/<repo>`, write a failing unit test or `test-cases/` reproduction scenario FIRST, confirm it fails before patching, then apply the minimal English-only fix (`<= 600` lines/file, preserving all 4-layer boundaries).
+  3. **Local Gates & Hand-Off**: Verify the new regression test + `check-guardrails.mjs` + path-filtered component tests pass, open a Milestone-linked PR with `Fixes <repo>#<num>` and pasted failure->pass evidence, and run `respire-process.mjs mark-verify <CARD>`.
+  4. **`LESSONS.md` 3-Strike Audit**: Scribe logs non-trivial root causes in `LESSONS.md`; if the failure pattern reaches **>= 3 occurrences**, file a `guardrail` Issue to add an automated static or CI parity check.
+- **Case 2 — Spec-Changing Bugfix (Contract, Behavior, or UI Flow Changes)**:
+  - Treat as a standard Change (`openspec/changes/NNN-<slug>/` with delta spec + `oasdiff` / prototype update) through the 8-step loop above.
+
+### Recipe E: Self-Dispatching Task & Review Discovery
+
+Any agent session can self-dispatch cleanly with zero external orchestration:
+1. **Implementer / Bugfixer Loop**: `respire-process.mjs sync` -> `next` (exit `2` = stop) -> `claim <CARD>` -> `.worktrees/` fix/feature + tests -> PR -> `mark-verify <CARD>`.
+2. **Independent Reviewer / Verifier Loop**: `respire-process.mjs review-next` (exit `2` = stop) -> read-only diff, CI, OpenSpec, UI Preview, & `test-cases/` audit -> `post-verdict <owner/repo#pr> --verdict <PASS|CONDITIONAL|REJECT> --summary "..."`.
+3. **Maintainer Merge Loop**: `respire-process.mjs verify-merge <owner/repo#pr>` -> merge PR -> `complete <CARD> --pr <PR_URL>` (automatically closes card & unlocks downstream DAG cards).

@@ -17,10 +17,14 @@
 
 ## One-Line Dispatch Prompts (Copy & Paste)
 
+Full formatted prompts in **[oneline.md](oneline.md)** (`node process/scripts/respire-process.mjs roles --one-line`):
+
 - **Implementer**:
-  > Read `respire-resources/AGENTS.md`, `openspec/AGENT_EXECUTION_GUIDE.md`, and `process/roles/implementer.md`. Run `node process/scripts/respire-process.mjs next` inside `respire-resources`; if it exits 2, stop and report. Otherwise claim the card, work in `../.worktrees/` strictly in English (no CJK outside UI i18n), pass guardrails, open a Milestone-linked PR with `Fixes <repo>#<num>`, and never self-verify.
+  > Read `respire-resources/AGENTS.md`, `openspec/AGENT_EXECUTION_GUIDE.md`, and `process/roles/implementer.md`. Run `node process/scripts/respire-process.mjs next` inside `respire-resources`; if it exits 2, stop and report. Otherwise claim the card, work in `../.worktrees/` strictly in English (no CJK outside UI i18n), pass guardrails, open a Milestone-linked PR with `Fixes <repo>#<num>`, run `mark-verify`, and never self-verify.
+- **Bugfixer**:
+  > Read `respire-resources/AGENTS.md` and `openspec/FEATURE_LIFECYCLE.md` (Recipe D). Claim or open a Milestone bug card, write a failing regression test first in `../.worktrees/`, apply the minimal English fix, pass guardrails, open a PR with `Fixes <repo>#<num>`, run `mark-verify`, and check `LESSONS.md`.
 - **Verifier (launch in a NEW read-only session)**:
-  > You are Respire's read-only Verifier (`process/roles/verifier.md`). Modify zero files or Issues. Inspect the PR diff, CI checks, matching OpenSpec scenarios, and `test-cases/` runs, then issue a `PASS`, `CONDITIONAL`, or `REJECT` verdict anchored to concrete outputs (mark skipped items `UNTESTED`).
+  > You are Respire's read-only Verifier (`process/roles/verifier.md`). Modify zero files or Issues. Run `node process/scripts/respire-process.mjs review-next` (stop on exit 2), inspect the PR diff, CI checks, matching OpenSpec scenarios, and `test-cases/` runs, then run `post-verdict <owner/repo#pr> --verdict <PASS|CONDITIONAL|REJECT> --summary "<evidence>"` (mark skipped items `UNTESTED`).
 - **Triager**:
   > Read `process/roles/triager.md` and `openspec/ROADMAP.md`. Triage Issues, draft OpenSpec 4-file Change packages in English, and check DAG metadata; never add `spec:approved` or edit product code.
 - **Scribe**:

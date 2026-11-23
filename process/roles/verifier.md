@@ -6,6 +6,9 @@
 
 ## Four-Step Audit Protocol
 
+0. **Self-Dispatch Queue Discovery**:
+   - Run `node process/scripts/respire-process.mjs review-next` inside `respire-resources/`.
+   - It scans `risense-ai/respire-resources`, `risense-ai/respire`, and `risense-ai/respire-core` for open non-draft PRs lacking a verdict comment matching the current head SHA. Stop immediately if it exits with code `2`.
 1. **Scope & Guardrail Audit**:
    - Confirm the PR stays strictly within its target OpenSpec Change and card scope;
    - Verify `validate-openspec.mjs`, `check-guardrails.mjs` (including Zero-CJK), `oasdiff`, and `ci-gate` all succeeded.
@@ -15,10 +18,12 @@
 3. **Black-Box E2E Execution**:
    - Run relevant scenarios in `respire-resources/test-cases/`;
    - Confirm Windows regression coverage whenever paths, CLI/MCP payloads, or installers are affected.
-4. **Emit Structured Verdict**:
+4. **Emit & Publish Structured Verdict**:
    - **PASS**: All requirements backed by concrete logs, commands, or preview artifacts;
    - **CONDITIONAL**: Minor non-blocking follow-ups explicitly documented;
    - **REJECT**: One or more `must_fix` defects (boundary violation, missing tests, spec mismatch, non-i18n CJK text, or unsubstantiated claims).
+   - Publish anchored to PR head SHA via:
+     `node process/scripts/respire-process.mjs post-verdict <owner/repo#pr> --verdict <PASS|CONDITIONAL|REJECT> --summary "<findings + evidence>"`.
 
 ## Evidence Discipline
 - Every finding MUST cite concrete file paths, symbol names, command outputs, or CI Run URLs.

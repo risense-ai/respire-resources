@@ -9,6 +9,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { cmdPostVerdict, cmdReviewNext, cmdVerifyMerge } from "./lib/pr-review.mjs";
 
 const REPOS = ["risense-ai/respire-resources", "risense-ai/respire"];
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -271,17 +272,7 @@ function cmdClaim(arg) {
     console.error(`Refusing claim on ${card.meta.id} (${card.ref}); status is ${cls.status}: ${cls.reason}`);
     process.exit(2);
   }
-  gh([
-    "issue",
-    "edit",
-    String(card.number),
-    "--repo",
-    card.repo,
-    "--add-label",
-    "agent:in-progress",
-    "--remove-label",
-    "agent:ready",
-  ]);
+  gh(["issue", "edit", String(card.number), "--repo", card.repo, "--add-label", "agent:in-progress", "--remove-label", "agent:ready"]);
   console.log(`Claimed ${card.meta.id} (${card.ref}) -> added agent:in-progress`);
 }
 
@@ -362,13 +353,15 @@ function cmdRoles(args) {
   if (oneLine) {
     const prompts = {
       implementer:
-        "You are Respire Implementer: read respire-resources/AGENTS.md and openspec/AGENT_EXECUTION_GUIDE.md, run `node process/scripts/respire-process.mjs next` (stop on exit 2), claim the READY card, implement strictly in English inside ../.worktrees/, pass guardrails, and open a Milestone-linked PR with `Fixes <repo>#<num>`. Never self-verify.",
+        "You are Respire Implementer: read AGENTS.md and openspec/AGENT_EXECUTION_GUIDE.md, run `node process/scripts/respire-process.mjs next` (stop on exit 2), claim the READY card, implement strictly in English inside ../.worktrees/, pass guardrails, open a Milestone-linked PR with `Fixes <repo>#<num>`, then run `mark-verify`. Never self-verify.",
+      bugfixer:
+        "You are Respire Bugfixer: follow openspec/FEATURE_LIFECYCLE.md Recipe D—claim or open a Milestone bug Issue, write a failing regression test first in ../.worktrees/, apply the minimal English-only fix, pass guardrails, open a PR with `Fixes <repo>#<num>`, run `mark-verify`, and check LESSONS.md 3-strike rules.",
       verifier:
-        "You are Respire read-only Verifier (new session/read-only): modify zero files/Issues; audit PR diff, CI checks, matching OpenSpec scenarios, and test-cases/, then emit a PASS/CONDITIONAL/REJECT verdict with concrete command evidence (mark unrun checks UNTESTED).",
+        "You are Respire read-only Verifier (new session/read-only): modify zero code/Issues; run `node process/scripts/respire-process.mjs review-next` (stop on exit 2), inspect PR diff/CI/OpenSpec/test-cases/, and publish `post-verdict <owner/repo#pr> --verdict <PASS|CONDITIONAL|REJECT> --summary \"<evidence>\"` (mark unrun checks UNTESTED).",
       triager:
-        "You are Respire Triager: deduplicate Issues, draft English OpenSpec 4-file Change packages, and check DAG metadata; never apply spec:approved or modify product source code.",
+        "You are Respire Triager: deduplicate Issues, draft English OpenSpec 4-file Change packages (or bug-card specs), and check DAG metadata; never apply spec:approved or modify product source code.",
       scribe:
-        "You are Respire Scribe: archive verified & merged Changes into openspec/specs/, update ROADMAP.md and LESSONS.md in English, and ensure validate-openspec.mjs exits 0.",
+        "You are Respire Scribe: archive verified & merged Changes into openspec/specs/, update ROADMAP.md and LESSONS.md in English (filing guardrail Issues on 3+ recurrences), and ensure validate-openspec.mjs exits 0.",
       "release-manager":
         "You are Respire Release Manager: given Maintainer's component version, verify green main CI, push runtime-v*/cli-v*/client2-v*, and verify Monorepo, legacy mirror, and NPM artifacts.",
     };
@@ -384,7 +377,12 @@ function cmdRoles(args) {
     return;
   }
 
-  const targetFile = roleName ? path.join(rolesDir, `${roleName}.md`) : path.join(rolesDir, "README.md");
+  const targetFile =
+    roleName === "bugfixer"
+      ? path.join(ROOT, "openspec", "FEATURE_LIFECYCLE.md")
+      : roleName
+        ? path.join(rolesDir, `${roleName}.md`)
+        : path.join(rolesDir, "README.md");
   if (!fs.existsSync(targetFile)) {
     console.error(`Role guide not found: ${targetFile}`);
     process.exit(1);
@@ -537,48 +535,34 @@ function cmdPreflight() {
 
 const [, , cmd, ...rest] = process.argv;
 switch (cmd) {
-  case "preflight":
-    cmdPreflight();
-    break;
-  case "status":
-    cmdStatus();
-    break;
-  case "next":
-    cmdNext(rest.includes("--json"));
-    break;
-  case "claim":
-    cmdClaim(rest[0]);
-    break;
-  case "mark-verify":
-    cmdMarkVerify(rest[0]);
-    break;
-  case "complete":
-    cmdComplete(rest);
-    break;
-  case "sync":
-    cmdSync();
-    break;
-  case "approve-milestone":
-    cmdApproveMilestone(rest[0]);
-    break;
-  case "roles":
-    cmdRoles(rest);
-    break;
+  case "preflight": cmdPreflight(); break;
+  case "status": cmdStatus(); break;
+  case "next": cmdNext(rest.includes("--json")); break;
+  case "claim": cmdClaim(rest[0]); break;
+  case "mark-verify": cmdMarkVerify(rest[0]); break;
+  case "review-next": cmdReviewNext({ gh, fetchAllCards }, rest.includes("--json")); break;
+  case "post-verdict": cmdPostVerdict({ gh }, rest); break;
+  case "verify-merge": cmdVerifyMerge({ gh }, rest); break;
+  case "complete": cmdComplete(rest); break;
+  case "sync": cmdSync(); break;
+  case "approve-milestone": cmdApproveMilestone(rest[0]); break;
+  case "roles": cmdRoles(rest); break;
   default:
-    console.log(
-      [
-        "Respire Process CLI - Deterministic Multi-Agent Orchestrator",
-        "Usage:",
-        "  node process/scripts/respire-process.mjs preflight",
-        "  node process/scripts/respire-process.mjs status",
-        "  node process/scripts/respire-process.mjs next [--json]",
-        "  node process/scripts/respire-process.mjs claim <CARD-XXX | owner/repo#num>",
-        "  node process/scripts/respire-process.mjs mark-verify <CARD-XXX | owner/repo#num>",
-        "  node process/scripts/respire-process.mjs complete <CARD-XXX | owner/repo#num> [--pr <url>]",
-        "  node process/scripts/respire-process.mjs sync",
-        "  node process/scripts/respire-process.mjs approve-milestone <M1|M2|M3|M4|M5|M6|all>",
-        "  node process/scripts/respire-process.mjs roles [implementer|verifier|triager|scribe|release-manager] [--one-line]",
-      ].join("\n")
-    );
+    console.log([
+      "Respire Process CLI - Deterministic Multi-Agent Orchestrator",
+      "Usage: node process/scripts/respire-process.mjs <command> [options]",
+      "  preflight                              Verify tools, gh auth & sibling clones",
+      "  status                                 Summarize M1-M6 Milestones and DAG cards",
+      "  next [--json]                          Pick the single next READY card (Fail-Closed)",
+      "  claim <CARD-XXX | owner/repo#num>      Lock card (+agent:in-progress)",
+      "  mark-verify <CARD-XXX | ref>           Move card to agent:verify for review",
+      "  review-next [--json]                   Discover next open PR needing review",
+      "  post-verdict <pr-ref> --verdict <V> --summary \"<text>\"  Post head-SHA verdict",
+      "  verify-merge <owner/repo#pr | url>     Fail-closed pre-merge CI + verdict gate",
+      "  complete <CARD-XXX | ref> [--pr <url>] Close card, post evidence & sync DAG",
+      "  sync                                   Refresh agent:ready labels & Project #1",
+      "  approve-milestone <M1..M6|all>         Maintainer milestone approval helper",
+      "  roles [implementer|bugfixer|verifier|triager|scribe|release-manager] [--one-line]",
+    ].join("\n"));
     if (cmd && cmd !== "help" && cmd !== "--help") process.exit(1);
 }

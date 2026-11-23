@@ -18,8 +18,12 @@ Modeled on `sebas-process`, exit codes are strict and Fail-Closed:
 | `status` | Summarize `M1`–`M6` Milestones and all `respire-card` Issues | Errors out if zero orchestration cards exist |
 | `next [--json]` | Select highest-priority `READY` card (`M1`->`M6`, then Card ID) | Exits `2` unless `spec:approved` is set, `needs:human` absent, and ALL `depends_on` Issues closed |
 | `claim <card>` | Lock card (`+agent:in-progress -agent:ready`) | Rejects unless card status is strictly `READY` |
+| `mark-verify <card>` | Move card to `agent:verify` for independent Verifier | Rejects if Issue is closed |
+| `review-next [--json]` | Discover next open non-draft PR lacking fresh head-SHA verdict | Scans `respire-resources`, `respire`, `respire-core`; exits `2` when idle |
+| `post-verdict <pr-ref>` | Post `<!-- respire-verdict: <V> head=<sha> -->` comment on open PR | Validates enum (`PASS`/`CONDITIONAL`/`REJECT`) and open PR state |
+| `verify-merge <pr-ref>` | Final pre-merge gate check (`READY_TO_MERGE` check) | Requires open non-draft PR, passing CI on head SHA, and fresh `PASS`/`CONDITIONAL` verdict |
+| `complete <card>` | Close card, post PR evidence, and resync DAG + Project #1 | Runs `sync` to unlock downstream `agent:ready` cards |
 | `approve-milestone <M*\|all>` | Maintainer helper toggling `spec:proposed` -> `spec:approved` | Evaluates `depends_on` before adding `agent:ready` |
-| `verify-merge <pr> <issue>` *(T06-03)* | Final pre-merge gate check | Requires green `ci-gate`, independent Verifier `PASS`, zero open `must_fix` |
 | `evidence-register <pr>` *(T06-03)* | Bot-only structured Evidence poster | Requires PR merged to `main`, closed Issue, green checks, idempotency |
 
 ## 3. Trusted Identity Allowlist & `LESSONS.md` Audit Loop

@@ -9,7 +9,7 @@
 | Proven Practice | Origin Repo | Exact Respire Implementation |
 | --- | --- | --- |
 | **Spec-first § specs + WBS/DAG** | `sebas` | `openspec/specs/` + `openspec/changes/001..006/` + 20 GitHub Issues with `<!-- respire-card -->` `depends_on` DAG |
-| **Deterministic task CLI (not LLM guessing)** | `sebas` (`sebas-process`) | `process/scripts/respire-process.mjs` (`status`, `next`, `claim`, `mark-verify`, `approve-milestone`, Fail-Closed exit codes `0/1/2`) |
+| **Deterministic task & review CLI** | `sebas` (`sebas-process`) | `process/scripts/respire-process.mjs` (`status`, `next`, `claim`, `mark-verify`, `review-next`, `post-verdict`, `verify-merge`, `complete`, `approve-milestone`, Fail-Closed exit codes `0/1/2`) |
 | **Maker-Checker role separation** | `sebas` (`Implementer` vs `Verifier`) | `process/roles/implementer.md` vs read-only fresh-session `process/roles/verifier.md` + `evidence-register.yml` |
 | **Trusted identity allowlist** | `sebas` (`.github/agents.yml`) | `.github/agents.yml` (`maintainers: [luodaoyi]`, `trusted_bots: [github-actions[bot]]`) |
 | **Single-file line cap + doc anchors** | `sebas` (`<=400` lines, no line-number anchors) | `validate-openspec.mjs` (`<=400` lines in `openspec/`), `check-guardrails.mjs` (`<=600` lines/code file), `AGENTS.md` |

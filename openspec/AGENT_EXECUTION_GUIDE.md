@@ -1,6 +1,6 @@
 # Multi-Agent Cold-Start Execution Guide
 
-> **Goal**: Any newly started AI Agent (ChatGPT Dots, Codex, Claude Code, Antigravity, Cursor) MUST be able to read this file and drive `001`–`006` or Day-2 feature work directly via `process/scripts/respire-process.mjs` with zero prior conversation context. For ChatGPT Dots single-session automation, paste the standing prompt in **[../process/DOTS_MASTER_PROMPT.md](../process/DOTS_MASTER_PROMPT.md)**; see **[FEATURE_LIFECYCLE.md](FEATURE_LIFECYCLE.md)** for Day-2 recipes.
+> **Goal**: ANY newly started AI Agent or harness MUST be able to read this file and drive `001`–`006` or Day-2 feature, bugfix, and review work directly via `process/scripts/respire-process.mjs` with zero prior conversation context. See **[FEATURE_LIFECYCLE.md](FEATURE_LIFECYCLE.md)** for feature/bugfix recipes and **[../process/roles/oneline.md](../process/roles/oneline.md)** for concise one-line role prompts.
 
 ---
 
@@ -52,6 +52,25 @@ All working clones live under `D:\sources\repos-new\gh\1memory\`:
 
 ---
 
+## 2B. Self-Dispatching Reviewer / Verifier Protocol (Independent Session)
+
+1. **Discover open PRs awaiting review deterministically**:
+   ```sh
+   cd respire-resources
+   node process/scripts/respire-process.mjs review-next
+   ```
+   - Scans `risense-ai/respire-resources`, `risense-ai/respire`, and `risense-ai/respire-core` for non-draft open PRs lacking a fresh `<!-- respire-verdict: ... head=<sha> -->` marker matching the current PR head SHA (prioritizing `agent:verify` cards and passing CI).
+   - If `review-next` exits with code `2`, **STOP immediately** (no PRs require review).
+2. **Audit read-only & publish structured verdict**:
+   - Inspect diff, `ci-gate`/`validate-openspec`/`check-guardrails` checks, linked OpenSpec scenarios, UI Preview artifacts, and `test-cases/` outputs without editing product code or Issues.
+   - Publish verdict anchored to the exact head SHA:
+     ```sh
+     node process/scripts/respire-process.mjs post-verdict <owner/repo#pr> --verdict <PASS|CONDITIONAL|REJECT> --summary "<concrete evidence>"
+     ```
+   - Before merging, Maintainers verify CI + fresh verdict parity with `node process/scripts/respire-process.mjs verify-merge <owner/repo#pr>`.
+
+---
+
 ## 3. STOP & Escalate Conditions
 
 An Agent MUST halt immediately and report to the Maintainer if:
@@ -64,8 +83,9 @@ An Agent MUST halt immediately and report to the Maintainer if:
 
 ## 4. Ready-to-Copy One-Line Dispatch Prompts
 
+Full role cheat sheet in **[../process/roles/oneline.md](../process/roles/oneline.md)** or via `node process/scripts/respire-process.mjs roles --one-line`:
+
 - **Autonomous Implementer**:
-  > Read `respire-resources/AGENTS.md` and `respire-resources/openspec/AGENT_EXECUTION_GUIDE.md`. Inside `respire-resources`, run `node process/scripts/respire-process.mjs next`. If it exits with code 2, stop and report the blocker. Otherwise claim the card, create a worktree under `../.worktrees/`, implement the linked OpenSpec tasks strictly in English (no CJK outside UI i18n), pass local guardrails/tests, and open a PR linked to the card's Milestone with `Fixes <repo>#<num>`. Do not self-verify.
+  > Read `respire-resources/AGENTS.md` and `respire-resources/openspec/AGENT_EXECUTION_GUIDE.md`. Inside `respire-resources`, run `node process/scripts/respire-process.mjs next`. If it exits with code 2, stop and report the blocker. Otherwise claim the card, create a worktree under `../.worktrees/`, implement strictly in English (no CJK outside UI i18n), pass local guardrails/tests, open a Milestone-linked PR with `Fixes <repo>#<num>`, and run `mark-verify`. Do not self-verify.
 - **Independent Read-Only Verifier (fresh session)**:
-  > You are the read-only Verifier (`respire-resources/process/roles/verifier.md`). Modify no files or Issues. Inspect the target PR diff, CI checks (`ci-gate`, `validate-openspec`, `check-guardrails`), matching OpenSpec scenarios, and `test-cases/` outputs, then issue a `PASS`, `CONDITIONAL`, or `REJECT` verdict with concrete command evidence (mark anything unavailable as `UNTESTED`).
-- **Role Cheat Sheet**: Run `node process/scripts/respire-process.mjs roles --one-line`.
+  > You are the read-only Verifier (`respire-resources/process/roles/verifier.md`). Modify no code or Issues. Run `node process/scripts/respire-process.mjs review-next` (stop on exit 2), inspect the PR diff, CI checks, matching OpenSpec scenarios, and `test-cases/` outputs, then run `post-verdict <owner/repo#pr> --verdict <PASS|CONDITIONAL|REJECT> --summary "<concrete evidence>"` (mark unavailable checks `UNTESTED`).

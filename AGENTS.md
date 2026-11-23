@@ -36,6 +36,7 @@
 1. **Independent context**: An Implementer Agent MUST NEVER sign off final verification of its own code. Verification MUST be performed by a **read-only Verifier Agent** running in a fresh session/process.
 2. **Evidence-only claims**: Every claim MUST cite concrete command output, test logs, HTTP responses, or preview screenshots/videos.
 3. **Honest untested reporting**: If an environment lacks hardware/OS coverage (for example macOS or Windows ARM64), mark it explicitly as `UNTESTED` with the reason; never fabricate or relax assertions.
+4. **Tool- & Agent-Agnostic Governance**: Repository specs, workflows, and scripts MUST remain agent-agnostic—never commit vendor-specific agent names or session prompts into repository files.
 
 ---
 
