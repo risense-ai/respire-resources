@@ -16,7 +16,7 @@ flowchart LR
     C05 --> C06
 ```
 
-- **Current Status**: Both `risense-ai/respire-resources` and `risense-ai/respire` are live, public, and protected on `main` (`validate-openspec` and `ci-gate`). `M1`–`M6` Milestones, 17 process/area labels, and all **20 DAG-linked Issues** are active on GitHub. `respire-core` is now slated to become **open-source** under `apps/core/` after its pre-open-source secret/license audit (`CARD-002`).
+- **Current Status**: Both `risense-ai/respire-resources` and `risense-ai/respire` are live, public, and protected on `main` (`validate-openspec` and `ci-gate`). Org Project #1 ([Respire Transformation (001-006)](https://github.com/orgs/risense-ai/projects/1)), `M1`–`M6` Milestones, 17 labels, and all **20 DAG-linked Issues** are active (`M1` and `M2` approved; `CARD-001` completed). `respire-core` is transitioning to **open-source** under `apps/core/` after its pre-open-source secret/license audit (`CARD-002`).
 
 ---
 
@@ -24,8 +24,8 @@ flowchart LR
 
 | Change | Milestone | Core Objective | Status |
 | --- | --- | --- | --- |
-| [001-resources-openspec-foundation](changes/001-resources-openspec-foundation/proposal.md) | `M1` | SSOT repo, Zero-CJK English-only gate, Milestones/Labels, branch protection, Project sync | `proposed` (Phase 1 & T01-06/08 done) |
-| [002-runtime-openapi-v1-migration](changes/002-runtime-openapi-v1-migration/proposal.md) | `M2` | Full V1 `openapi.yaml` (REST+SSE), Rust/Go/TS SDKs, legacy JSON-RPC shim, Windows plugin migration | `proposed` |
+| [001-resources-openspec-foundation](changes/001-resources-openspec-foundation/proposal.md) | `M1` | SSOT repo, Zero-CJK English-only gate, Milestones/Labels, branch protection, Project #1 sync | `approved` (`T01-01`–`T01-06`, `T01-08`, `T01-10` done) |
+| [002-runtime-openapi-v1-migration](changes/002-runtime-openapi-v1-migration/proposal.md) | `M2` | Full V1 `openapi.yaml` (REST+SSE), Rust/Go/TS SDKs, legacy JSON-RPC shim, Windows plugin migration | `approved` (`CARD-003` ready) |
 | [003-monorepo-merge-and-release-bridge](changes/003-monorepo-merge-and-release-bridge/proposal.md) | `M3` | Import open-source `core`, `runtime`, filtered `cli`, `client2` into `risense-ai/respire`; path CI + Release Fan-Out | `proposed` (`T03-01` done) |
 | [004-ci-guardrails-and-code-slimming](changes/004-ci-guardrails-and-code-slimming/proposal.md) | `M4` | Hard CI guardrails (deps, Zero-CJK, 600-line ratchet, route parity) + 4-app slimming | `proposed` |
 | [005-prototypes-and-e2e-acceptance](changes/005-prototypes-and-e2e-acceptance/proposal.md) | `M5` | 16 HTML prototypes, Mock API, Windows & cross-app E2E suite, Playwright PR UI Preview | `proposed` |
@@ -37,7 +37,7 @@ flowchart LR
 
 | Card | Milestone | Issue Ref | Target Repo | Depends On | Summary |
 | --- | --- | --- | --- | --- | --- |
-| `CARD-001` | `M1` | [respire-resources#1](https://github.com/risense-ai/respire-resources/issues/1) | `respire-resources` | — | Authorize & sync org GitHub Project board (`needs:human`) |
+| `CARD-001` | `M1` | [respire-resources#1](https://github.com/risense-ai/respire-resources/issues/1) | `respire-resources` | — | Authorize & sync org GitHub Project #1 (`DONE`) |
 | `CARD-002` | `M1` | [respire-resources#2](https://github.com/risense-ai/respire-resources/issues/2) | `respire-core` | — | Pre-open-source audit of `respire-core` (secrets/license) & sync templates |
 | `CARD-003` | `M2` | [respire-resources#3](https://github.com/risense-ai/respire-resources/issues/3) | `respire-resources` | — | Finalize OpenAPI 3.1 auth/error details, golden JSON fixtures & `oasdiff` gate |
 | `CARD-004` | `M2` | [respire#1](https://github.com/risense-ai/respire/issues/1) | `respire` | `respire-resources#3` | Build `sync-contracts` & Rust/Go/TS SDK codegen pipeline |

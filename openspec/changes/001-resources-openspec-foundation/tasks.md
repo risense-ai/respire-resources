@@ -12,7 +12,7 @@
 - [x] **T01-06** Create aligned Milestones (`M1`–`M6`), 17 process/area labels, and 20 DAG-linked orchestration Issues across `risense-ai/respire-resources` and `risense-ai/respire`
 - [x] **T01-08** Enable `main` branch protection on `risense-ai/respire-resources` (`validate-openspec`) and `risense-ai/respire` (`ci-gate`)
 - [x] **T01-10** Convert all docs, specs, scripts, templates, and GitHub Issues to strict English-only and enforce Zero-CJK scanning in CI
-- [ ] **T01-05** Sync org-level GitHub Project v2 board (`CARD-001`): Maintainer runs `gh auth refresh -s project,read:project` followed by `node process/scripts/sync-project-board.mjs --apply`
+- [x] **T01-05** Sync org-level GitHub Project v2 board (`CARD-001`): `Respire Transformation (001-006)` live at `https://github.com/orgs/risense-ai/projects/1` with all 20 M1–M6 cards synced and `CARD-001` closed
 - [ ] **T01-07** Perform pre-open-source secret/license audit of `respire-core` and sync `.coderabbit.yaml` + Issue/PR templates (`CARD-002`)
 - [ ] **T01-09** Archive Change `001` by merging `specs/governance/spec.md` into `openspec/specs/governance/spec.md` once Phase 2 closes
 
