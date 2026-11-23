@@ -16,7 +16,7 @@ flowchart LR
     C05 --> C06
 ```
 
-- **Current Status**: Both `risense-ai/respire-resources` and `risense-ai/respire` are live, public, published under **Respire Noncommercial License 1.0**, auto-merge enabled, and protected on `main` (`validate-openspec` / `ci-gate` + `verdict-gate`, with automated post-merge `evidence-register`). Org Project #1 ([Respire Transformation (001-006)](https://github.com/orgs/risense-ai/projects/1)), `M1`–`M6` Milestones, 17 labels, and all **20 DAG-linked Issues** are active (`M1` and `M2` approved; `CARD-001` completed). Audited Core source publishes under **Respire Noncommercial License 1.0** inside `risense-ai/respire/apps/core/` while legacy `risense-ai/respire-core` stays a private archive (`CARD-002`).
+- **Current Status**: Both `risense-ai/respire-resources` and `risense-ai/respire` are live, public, published under **Respire Noncommercial License 1.0**, auto-merge enabled, and protected on `main` (`validate-openspec` / `ci-gate` + `verdict-gate`, with automated post-merge `evidence-register`). Org Project #1 ([Respire Transformation (001-006)](https://github.com/orgs/risense-ai/projects/1)), `M1`–`M6` Milestones, 17 labels, and all **20 DAG-linked Issues** are active (`M1`–`M6` approved; `CARD-001` and `CARD-002` closed; legacy freeze `CARD-005` deferred as `needs:human` until post-`-dev.1` cutover). Audited Core source publishes under **Respire Noncommercial License 1.0** inside `risense-ai/respire/apps/core/` while legacy `risense-ai/respire-core` stays a private archive.
 
 ---
 
@@ -24,12 +24,12 @@ flowchart LR
 
 | Change | Milestone | Core Objective | Status |
 | --- | --- | --- | --- |
-| [001-resources-openspec-foundation](changes/001-resources-openspec-foundation/proposal.md) | `M1` | SSOT repo, Zero-CJK English-only gate, Milestones/Labels, branch protection, Project #1 sync | `approved` (`T01-01`–`T01-06`, `T01-08`, `T01-10` done) |
+| [001-resources-openspec-foundation](changes/001-resources-openspec-foundation/proposal.md) | `M1` | SSOT repo, Zero-CJK English-only gate, Milestones/Labels, branch protection, Project #1 sync | `approved` (`T01-01`–`T01-08`, `T01-10` done; ready for `T01-09` archive) |
 | [002-runtime-openapi-v1-migration](changes/002-runtime-openapi-v1-migration/proposal.md) | `M2` | Full V1 `openapi.yaml` (REST+SSE), Rust/Go/TS SDKs, legacy JSON-RPC shim, Windows plugin migration | `approved` (`CARD-003` ready) |
-| [003-monorepo-merge-and-release-bridge](changes/003-monorepo-merge-and-release-bridge/proposal.md) | `M3` | Import open-source `core`, `runtime`, filtered `cli`, `client2` into `risense-ai/respire`; path CI + Release Fan-Out | `proposed` (`T03-01` done) |
-| [004-ci-guardrails-and-code-slimming](changes/004-ci-guardrails-and-code-slimming/proposal.md) | `M4` | Hard CI guardrails (deps, Zero-CJK, 600-line ratchet, route parity) + 4-app slimming | `proposed` |
-| [005-prototypes-and-e2e-acceptance](changes/005-prototypes-and-e2e-acceptance/proposal.md) | `M5` | 16 HTML prototypes, Mock API, Windows & cross-app E2E suite, Playwright PR UI Preview | `proposed` |
-| [006-multi-agent-automation-workflow](changes/006-multi-agent-automation-workflow/proposal.md) | `M6` | Six-role separation, `respire-process` CLI, Bot Evidence registration, nightly `LESSONS.md` audits | `proposed` (`T06-01`–`T06-05` promoted & done in `M1`) |
+| [003-monorepo-merge-and-release-bridge](changes/003-monorepo-merge-and-release-bridge/proposal.md) | `M3` | Import open-source `core`, `runtime`, filtered `cli`, `client2` into `risense-ai/respire`; path CI + Release Fan-Out | `approved` (`T03-01` done; `CARD-006`–`CARD-008` ready) |
+| [004-ci-guardrails-and-code-slimming](changes/004-ci-guardrails-and-code-slimming/proposal.md) | `M4` | Hard CI guardrails (deps, Zero-CJK, 600-line ratchet, route parity) + 4-app slimming | `approved` |
+| [005-prototypes-and-e2e-acceptance](changes/005-prototypes-and-e2e-acceptance/proposal.md) | `M5` | 16 HTML prototypes, Mock API, Windows & cross-app E2E suite, Playwright PR UI Preview | `approved` |
+| [006-multi-agent-automation-workflow](changes/006-multi-agent-automation-workflow/proposal.md) | `M6` | Six-role separation, `respire-process` CLI, Bot Evidence registration, nightly `LESSONS.md` audits | `approved` (`T06-01`–`T06-05` promoted & done in `M1`) |
 
 ---
 
@@ -38,13 +38,13 @@ flowchart LR
 | Card | Milestone | Issue Ref | Target Repo | Depends On | Summary |
 | --- | --- | --- | --- | --- | --- |
 | `CARD-001` | `M1` | [respire-resources#1](https://github.com/risense-ai/respire-resources/issues/1) | `respire-resources` | — | Authorize & sync org GitHub Project #1 (`DONE`) |
-| `CARD-002` | `M1` | [respire-resources#2](https://github.com/risense-ai/respire-resources/issues/2) | `respire-core` | — | Pre-open-source audit of `respire-core` (secrets/license) & sync templates |
+| `CARD-002` | `M1` | [respire-resources#2](https://github.com/risense-ai/respire-resources/issues/2) | `respire-core` | — | Pre-open-source audit of `respire-core` & sync templates (`DONE`) |
 | `CARD-003` | `M2` | [respire-resources#3](https://github.com/risense-ai/respire-resources/issues/3) | `respire-resources` | — | Finalize OpenAPI 3.1 auth/error details, golden JSON fixtures & `oasdiff` gate |
 | `CARD-004` | `M2` | [respire#1](https://github.com/risense-ai/respire/issues/1) | `respire` | `respire-resources#3` | Build `sync-contracts` & Rust/Go/TS SDK codegen pipeline |
-| `CARD-005` | `M3` | [respire#2](https://github.com/risense-ai/respire/issues/2) | `respire` | — | Freeze legacy code repos (`runtime`/`cli`/`client2`) & publish migration notice (`needs:human`) |
-| `CARD-006` | `M3` | [respire#3](https://github.com/risense-ai/respire/issues/3) | `respire` | `respire#2` | Import `respire-runtime` history into `apps/runtime` & wire `runtime-ci` |
-| `CARD-007` | `M3` | [respire#4](https://github.com/risense-ai/respire/issues/4) | `respire` | `respire#2` | Strip 54k legacy server lines & import `respire-cli` into `apps/cli` |
-| `CARD-008` | `M3` | [respire#5](https://github.com/risense-ai/respire/issues/5) | `respire` | `respire#2` | Import `respire-client2` into `apps/client2` & verify path-filtered `ci-gate` |
+| `CARD-005` | `M3` | [respire#2](https://github.com/risense-ai/respire/issues/2) | `respire` | — | Freeze legacy code repos (`runtime`/`cli`/`client2`) & publish migration notice (`needs:human`, deferred post-`-dev.1`) |
+| `CARD-006` | `M3` | [respire#3](https://github.com/risense-ai/respire/issues/3) | `respire` | — | Import `respire-runtime` history into `apps/runtime` & wire `runtime-ci` |
+| `CARD-007` | `M3` | [respire#4](https://github.com/risense-ai/respire/issues/4) | `respire` | — | Strip 54k legacy server lines & import `respire-cli` into `apps/cli` |
+| `CARD-008` | `M3` | [respire#5](https://github.com/risense-ai/respire/issues/5) | `respire` | — | Import `respire-client2` into `apps/client2` & verify path-filtered `ci-gate` |
 | `CARD-009` | `M3` | [respire#6](https://github.com/risense-ai/respire/issues/6) | `respire` | `respire#3,#4,#5` | Component Tag releases (`runtime-v*`/`cli-v*`/`client2-v*`), legacy/NPM Fan-Out & updater |
 | `CARD-010` | `M2` | [respire#7](https://github.com/risense-ai/respire/issues/7) | `respire` | `respire#1,#3` | Implement OpenAPI 3.1 (`/v1/*`+SSE), route parity tests & `<200`-line legacy shim |
 | `CARD-011` | `M2` | [respire#8](https://github.com/risense-ai/respire/issues/8) | `respire` | `respire#4,#5,#7` | Migrate CLI/Client2/MCP to generated SDKs, SSE & Windows HTTP plugin transport |
