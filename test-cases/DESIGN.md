@@ -8,8 +8,8 @@
 
 | Directory | Runner / Stack | Target Under Test | Mandatory Coverage |
 | --- | --- | --- | --- |
-| `test-cases/scenarios/` | Node.js YAML runner (`runner.mjs`) | Real compiled `rsrs-runtime` | Cold start, lossless 1.x SQLite `.db` golden-fixture upgrade + backup + downgrade-guard, capability discovery, SSE download cancel, non-blocking `model.switch` during active `recall`, rollback on missing assets, space CRUD |
-| `test-cases/cli-e2e/` | Node.js / shell subprocess harness | Compiled `rsrs` + `rsrs-runtime` | Legacy CLI flag & JSON output backward compatibility, `rsrs doctor --fix` `Paused` cleanup, online inactive-model uninstall, upgrade/fallback behavior |
+| `test-cases/scenarios/` | Node.js YAML runner (`runner.mjs`) | Real compiled `rsrs-runtime` | Cold start, **lossless 1.x SQLite `.db` golden-fixture upgrade + backup + downgrade-guard**, **Vault `v1`–`v4` super-password unlock/decryption**, capability discovery, SSE download cancel, non-blocking `model.switch` during active `recall`, rollback on missing assets, space CRUD |
+| `test-cases/cli-e2e/` | Node.js / shell subprocess harness | Compiled `rsrs` + `rsrs-runtime` | Full CLI/TUI/IDE `inject` feature parity, legacy CLI flag & JSON output backward compatibility, `keys-export`, `rsrs doctor --fix` `Paused` cleanup, online inactive-model uninstall, upgrade/fallback behavior |
 | `test-cases/plugin-rpc/` | OpenAPI HTTP, legacy `/rpc` & MCP stdio client | `rsrs-runtime` + `rsrs mcp` | Legacy `/rpc` shim compatibility, 100 KB+ nested UTF-8 payloads, concurrent recall/store bursts, RFC 9457 error formatting |
 | `test-cases/client2-e2e/` | Playwright (Chromium/WebKitGTK) | Client2 WebUI + Mock/Real Runtime | Full 16-screen navigation, `en` & `zh` localization completeness, zero `NaN`/clipping, icon alignment, state sync after SSE completion |
 
@@ -35,6 +35,10 @@ Every PR touching `apps/runtime`, `apps/cli`, `apps/client2`, or `contracts/` MU
    - Verify new `rsrs-runtime`: (a) writes `<db>.bak-pre-v<N>-<ts>` before migrating, (b) migrates atomically with `PRAGMA quick_check = ok`, (c) preserves 100% of existing memories and pending sync rows, (d) stamps monotonic `PRAGMA user_version` and restarts idempotently, and (e) fails closed on databases with a higher `user_version`.
 2. **Legacy Plugin Compatibility (`plugin-rpc/` & `cli-e2e/`)**:
    - Verify legacy JSON-RPC methods (`runtime.status`, `model.catalog`, `model.switch`, `cli.exec`), legacy `rsrs` CLI flags/JSON outputs, and `rsrs mcp` stdio tools succeed against the new Runtime without requiring plugins to upgrade simultaneously.
+3. **Super-Password & Vault v1–v4 Decryption Golden Vectors (`test-cases/fixtures/crypto/`)**:
+   - Verify Vault `v1` (`Argon2id` + Account Secret), `v2` (`PBKDF2-SHA256` 210k), `v3` (`PBKDF2` + Secret Key), and `v4` (`A3-...` HKDF) profiles unlock with original super passwords across BOTH `onememory:*` and `rsrs:*` domain strings, unmarked legacy ciphertexts + `rsrs:v1:` envelopes, `PBKDF2` 100k auth hashes, OS keyring `rsrs` (`keyring_account` aliases), and `~/.rsrs/` + `accounts/<name>/` directories.
+4. **Zero User-Feature Reduction Audit**:
+   - Verify slimming keeps every user-facing feature intact across CLI, TUI, MCP, IDE `inject`, and all 16 Client2 screens (accounts/spaces/grants, diary, organize, session-import, sync/conflict recovery, online model uninstall, and GPU/CPU selection).
 
 ---
 

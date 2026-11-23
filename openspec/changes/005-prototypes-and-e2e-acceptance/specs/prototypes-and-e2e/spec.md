@@ -19,9 +19,9 @@ Every new desktop screen or major interaction redesign MUST provide offline-inte
 - **THEN** the payload MUST persist and recall completely with zero CLI truncation or encoding corruption
 
 #### Scenario: Legacy 1.x SQLite database & legacy plugin backward-compatibility regression
-- **GIVEN** sanitized real 1.x SQLite `.db` fixtures under `test-cases/fixtures/db/` (containing encrypted memories, pending `sync_outbox` rows, `review_history`, `access_grants`, and `query_log`) alongside legacy `/rpc` and `rsrs` CLI test scripts
-- **WHEN** `test-cases/` launches the newly compiled `rsrs-runtime` and `rsrs` binaries against copies of those legacy `.db` fixtures
-- **THEN** Runtime SHALL back up and migrate each database losslessly with zero row/sync loss, succeed on idempotent restart, and serve existing legacy `/rpc`, CLI flag, and `rsrs mcp` plugin calls without breaking compatibility
+- **GIVEN** sanitized real 1.x SQLite `.db` fixtures under `test-cases/fixtures/db/` (containing encrypted memories, pending `sync_outbox` rows, `review_history`, `access_grants`, and `query_log`) alongside Golden Crypto Vault `v1`–`v4` super-password vectors (`test-cases/fixtures/crypto/`) and legacy `/rpc` + `rsrs` CLI test scripts
+- **WHEN** `test-cases/` launches the newly compiled `rsrs-runtime` and `rsrs` binaries against copies of those legacy `.db` and Vault fixtures
+- **THEN** Runtime SHALL back up and migrate each database losslessly with zero row/sync loss, unlock Vault `v1`–`v4` repositories and decrypt legacy ciphertexts using the original super passwords, succeed on idempotent restart, and serve all existing legacy `/rpc`, CLI/TUI/IDE `inject`, and `rsrs mcp` calls with zero user-feature reduction
 
 ### Requirement: Automated Client2 PR Visual Preview
 Any PR altering `apps/client2` frontend or desktop UI assets MUST run Playwright against Mock Runtime in a tokenless sandbox and embed `en`/`zh` screenshots or MP4 recordings into the PR description.

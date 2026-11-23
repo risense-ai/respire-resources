@@ -12,9 +12,9 @@
 
 ## 2. Black-Box E2E Referee Suite (`test-cases/`)
 
-1. **`scenarios/*.yaml` & Golden DB Fixtures (`test-cases/fixtures/db/`)**: Declarative runner executing real black-box requests against compiled `rsrs-runtime` (cold start, lossless upgrade of sanitized real 1.x SQLite `.db` snapshots with backup/rollback/downgrade checks, download cancel, non-blocking `recall` during switch, rollback safety).
-2. **`plugin-rpc/`, `cli-e2e/` & Windows Regression Gates**:
-   - Verify full backward compatibility for legacy `/rpc` callers (`runtime.status`, `model.switch`, `cli.exec`), legacy `rsrs` CLI flags/JSON outputs, and `rsrs mcp` tools against the new Runtime;
+1. **`scenarios/*.yaml`, Golden DB Fixtures (`test-cases/fixtures/db/`) & Golden Crypto Vectors (`test-cases/fixtures/crypto/`)**: Declarative runner executing real black-box requests against compiled `rsrs-runtime` (cold start, lossless upgrade of sanitized real 1.x SQLite `.db` snapshots with backup/rollback/downgrade checks, Vault `v1`–`v4` super-password unlock & decryption across `onememory:*`/`rsrs:*` + unmarked/marked ciphertexts, download cancel, non-blocking `recall` during switch, rollback safety).
+2. **`plugin-rpc/`, `cli-e2e/` & Feature-Parity Regression Gates**:
+   - Verify full backward compatibility for legacy `/rpc` callers (`runtime.status`, `model.switch`, `cli.exec`), legacy `rsrs` CLI flags/JSON outputs, TUI, IDE `inject`, and `rsrs mcp` tools with **zero user-feature reduction**;
    - Send **100 KB+ nested UTF-8 JSON payloads** (including isolated i18n fixture strings under `test-cases/fixtures/i18n/`) via HTTP `POST /v1/memories` and `rsrs mcp` stdio on Windows runners to verify zero CLI length truncation or quoting corruption;
    - Verify online non-active model uninstall across Windows paths containing spaces and OneDrive reparse points, plus zero lingering `Paused` locks.
 3. **`client2-e2e/` (Playwright Bilingual Verification)**: Run across `en` and `zh` UI locales (loading localized strings from isolated UI i18n bundles) checking zero console errors, zero missing translation keys, no `NaN`/clipping, and aligned controls.

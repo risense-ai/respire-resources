@@ -41,13 +41,16 @@
 
 ---
 
-## 5. SQLite Database Backward Compatibility (Zero Tolerance)
+## 5. Database, Super-Password Crypto & Feature-Parity Compatibility (Zero Tolerance)
 
 1. **Expand-Only Authoritative Schema**: `apps/runtime` MUST NEVER drop, rename, or alter existing columns, primary keys, ciphertext/nonce layouts, or sync triggers on legacy authoritative tables (`memories`, `memory_chunks`, `meta`, `sync_*`, `review_history`, `access_grants`, `query_log`, `query_feedback`, `skill_runs`, `entry_audit`, `recall_pairs`, `core_artifacts`). Extend persisted schema strictly via idempotent additive columns (with defaults) or new tables; only derived cache tables (`retrieval_*`, `diary_*`) may be rebuilt.
 2. **Backup-Before-Migrate & Atomic Transactions**: Before migrating a legacy `.db`, Runtime MUST create an atomic backup (`<db>.bak-pre-v<N>-<ts>`) via SQLite Online Backup API, run migration steps inside a single transaction followed by `PRAGMA quick_check`, and roll back untouched on failure.
 3. **Monotonic `PRAGMA user_version` & Downgrade Guard**: Bridge unversioned 1.x databases (`user_version = 0`) via idempotent column/trigger inspection before stamping a monotonic `user_version`; never edit shipped migration steps; Fail-Closed with an explicit upgrade error if opening a database with a higher `user_version`.
 4. **Golden Legacy DB Regression Gate**: Every PR modifying `apps/runtime` storage MUST pass lossless upgrade, recall, `sync_outbox` preservation, and idempotent restart checks against sanitized 1.x `.db` fixtures in `respire-resources/test-cases/fixtures/db/`.
 5. **Single Writer Only**: Only `apps/runtime` may open SQLite databases; `apps/cli` and `apps/client2` MUST NEVER access `.db` files directly.
+6. **Data Directory & Multi-Profile Layout**: Preserve compatibility with `~/.rsrs/`, `RSRS_DATA_DIR`, `accounts/<name>/`, `session.json`, `client.json`, `diary` cache, and `lock.db` across existing user profiles.
+7. **Super-Password, Vault v1–v4 & Legacy Ciphertext Decryption**: `apps/runtime` (`crates/crypto`, `auth`, `keystore`) MUST remain 100% decryption- and login-compatible with existing repositories across Vault `v1` (`Argon2id` + Account Secret), `v2` (`PBKDF2-SHA256` 210k), `v3` (`PBKDF2` + Secret Key), and `v4` (`A3-...` 18-byte entropy HKDF), preserving BOTH `onememory:*` and `rsrs:*` domain strings (`onememory:kek:v4`, `rsrs:kek:v4`, `onememory:kek:v1`, `rsrs:kek:v1`, `rsrs:data:v1`, `rsrs:embedding:v1`, `onememory:auth-salt:v1`, `rsrs:auth-salt:v1`), `PBKDF2-SHA256` 100k auth hashing, AES-256-GCM 12-byte nonces, unmarked legacy ciphertexts plus `rsrs:v1:` envelopes, OS keyring service `rsrs` with `keyring_account` aliases, `--super`, and `rsrs keys-export`; never write plaintext credentials to `session.json`.
+8. **Zero User-Feature Reduction**: Code slimming deletes ONLY dead/duplicated code and relocates business state machines from CLI/Client2 into Runtime—it MUST NEVER remove or regress any user-facing feature (CLI subcommands, TUI, MCP, IDE injection, all 16 Client2 screens, multi-account/spaces/grants, diary, organize, session-import, sync/conflict recovery, model install/switch/online-uninstall, or GPU/CPU selection).
 
 ---
 

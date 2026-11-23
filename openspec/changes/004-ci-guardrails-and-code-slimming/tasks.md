@@ -12,7 +12,7 @@
 
 ## Phase 3: `apps/runtime` Stabilization & God-File Teardown
 
-- [ ] **T04-05** Fix 4x SHA-256, enforce CPU `.ort`-only check, add foreground preemption + non-blocking model switch, fix `pending` cleanup/rollback, retire Legacy M3 lock, and implement backup-before-migrate + monotonic `PRAGMA user_version` + downgrade guard + Golden 1.x SQLite migration unit tests (`CARD-014`)
+- [ ] **T04-05** Fix 4x SHA-256, enforce CPU `.ort`-only check, add foreground preemption + non-blocking model switch, fix `pending` cleanup/rollback, retire Legacy M3 lock, implement backup-before-migrate + monotonic `PRAGMA user_version` + downgrade guard + Golden 1.x SQLite migration unit tests, AND lock Vault v1–v4 Super-Password / `onememory:*` + `rsrs:*` decryption + OS keyring `rsrs` Golden Crypto Vector tests (`CARD-014`)
 - [ ] **T04-06** Split `engine.rs`, `rpc_serve.rs`, and `service.rs` `<600` lines; merge `app` + `app-domain`; remove `prompt.rs`/`inject.rs`; switch `status_light` to SQL aggregates (`CARD-014`)
 
 ## Phase 4: `apps/cli` & `apps/client2` Slimming
