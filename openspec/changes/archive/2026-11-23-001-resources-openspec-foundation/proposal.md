@@ -1,7 +1,7 @@
 # Proposal: 001-resources-openspec-foundation
 
 - **Change ID**: `001-resources-openspec-foundation`
-- **Status**: `proposed`
+- **Status**: `archived`
 - **Owner**: Maintainer (`luodaoyi`)
 
 ## 1. Why
