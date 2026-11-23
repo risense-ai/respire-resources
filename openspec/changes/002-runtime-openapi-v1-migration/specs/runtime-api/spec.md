@@ -26,6 +26,11 @@ Runtime MUST advertise supported flags via `capabilities` on `GET /v1/health` (a
 - **WHEN** the client probes health and capabilities
 - **THEN** the client MUST NOT crash on version parsing, SHALL fall back to legacy compatible endpoints for simple operations, and SHALL prompt to upgrade Runtime for heavy transactions missing `host.transactions.v1`
 
+#### Scenario: Legacy plugin calls frozen JSON-RPC or existing CLI flags against new Runtime
+- **GIVEN** an un-upgraded plugin invoking legacy `/rpc` (`runtime.status`, `model.switch`, `cli.exec`) or existing `rsrs` CLI / `rsrs mcp` commands
+- **WHEN** the user upgrades to the new `-dev` or stable `apps/runtime` and `apps/cli`
+- **THEN** all existing legacy `/rpc` methods, CLI flags/JSON output contracts, and MCP tool signatures SHALL continue succeeding over the shared domain core without breaking existing integrations
+
 ### Requirement: HTTP OpenAPI & MCP Transport for Plugins (No Windows CLI Arg Passing)
 Plugins and external integrations MUST communicate with Runtime over local OpenAPI HTTP JSON bodies or `rsrs mcp` stdio rather than passing large business payloads on CLI command lines.
 
