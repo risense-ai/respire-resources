@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Models | Respire</title>
+  <link rel="stylesheet" href="../tokens/tokens.css">
+  <script defer src="../mock-api/fixture.js"></script>
+  <script defer src="gallery.js"></script>
+  <script defer src="screens.js"></script>
+</head>
+<body data-page="models">
+  <aside aria-label="Navigation"></aside>
+  <main>
+    <div class="toolbar"><span>Studio / Models</span><label>Scenario <select id="scenario"></select></label></div>
+    <section class="heading"><h1>Model library</h1><p>Manage installed models and follow Runtime operations.</p></section>
+    <article><header><h2>Model catalog</h2><span class='pill'>Local engines</span></header><div id='results'></div></article><article id='operation' hidden><h2>Operation progress</h2><progress max='100' value='0'></progress><p id='op-state'></p><button id='cancel'>Cancel operation</button></article>
+    <p id="notice" role="status" aria-live="polite"></p>
+  </main>
+</body>
+</html>

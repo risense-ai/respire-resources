@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Members | Respire</title>
+  <link rel="stylesheet" href="../tokens/tokens.css">
+  <script defer src="../mock-api/fixture.js"></script>
+  <script defer src="gallery.js"></script>
+  <script defer src="screens.js"></script>
+</head>
+<body data-page="space-members">
+  <aside aria-label="Navigation"></aside>
+  <main>
+    <div class="toolbar"><span>Studio / Members</span><label>Scenario <select id="scenario"></select></label></div>
+    <section class="heading"><h1>Space members</h1><p>Select a space and manage its synthetic members.</p></section>
+    <article><h2>Shared spaces</h2><label>Space<select id="space"></select></label><div id='results'></div><label>Fixture member name<input id='input' value='Guest researcher'></label><select id='role' aria-label='Member role'><option>viewer</option><option>editor</option></select> <button id='action'>Invite member</button></article>
+    <p id="notice" role="status" aria-live="polite"></p>
+  </main>
+</body>
+</html>

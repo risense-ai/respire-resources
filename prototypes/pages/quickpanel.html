@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Quick panel | Respire</title>
+  <link rel="stylesheet" href="../tokens/tokens.css">
+  <script defer src="../mock-api/fixture.js"></script>
+  <script defer src="gallery.js"></script>
+  <script defer src="screens.js"></script>
+</head>
+<body data-page="quickpanel">
+  <aside aria-label="Navigation"></aside>
+  <main>
+    <div class="toolbar"><span>Studio / Quick panel</span><label>Scenario <select id="scenario"></select></label></div>
+    <section class="heading"><h1>Quick capture</h1><p>Keep a thought or recall a note without leaving the panel.</p></section>
+    <article><label>Note or search term<textarea id='input' required></textarea></label><div class='actions'><button id='action'>Save note</button><button class='secondary' id='search'>Recall</button></div><div id='results'></div></article>
+    <p id="notice" role="status" aria-live="polite"></p>
+  </main>
+</body>
+</html>

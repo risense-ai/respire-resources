@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Workspace | Respire</title>
+  <link rel="stylesheet" href="../tokens/tokens.css">
+  <script defer src="../mock-api/fixture.js"></script>
+  <script defer src="gallery.js"></script>
+  <script defer src="screens.js"></script>
+</head>
+<body data-page="workspace">
+  <aside aria-label="Navigation"></aside>
+  <main>
+    <div class="toolbar"><span>Studio / Workspace</span><label>Scenario <select id="scenario"></select></label></div>
+    <section class="heading"><h1>Memory workspace</h1><p>Browse the structure and connections in your notebook.</p></section>
+    <article><header><h2>Memory collection</h2><select id='mode' aria-label='Workspace view'><option>List</option><option>Tree</option><option>Cards</option><option>Graph</option></select></header><div id='results'></div><div class="actions"><button class="secondary" id="first">First page</button><button class='secondary' id='action'>Next page</button></div></article>
+    <article><h2>Selected memory</h2><label>Memory<select id="memory"></select></label><div class="actions"><button id="edit">Edit memory</button><button class="secondary" id="delete">Soft-delete</button></div><section id="editor" hidden><label>Title<input id="title"></label><label>Content<textarea id="content"></textarea></label><div class="actions"><button id="save">Save changes</button><button class="secondary" id="dismiss">Cancel edit</button></div></section></article>
+    <p id="notice" role="status" aria-live="polite"></p>
+  </main>
+</body>
+</html>
