@@ -116,6 +116,18 @@ test("legacy preflight checks synthetic inputs and reports plans without startin
     /Fixture profile must be an absolute directory/);
 });
 
+test("explicit verification rejects missing required suites while optional discovery still skips", async () => {
+  const run = (file, ...args) => promisify(execFile)(process.execPath,
+    [fileURLToPath(new URL(file, import.meta.url)), ...args]);
+  for (const file of ["./runner.mjs", "./cli-e2e/smoke.mjs", "./plugin-rpc/windows.mjs"]) {
+    assert.match((await run(file)).stdout, /^SKIP /m);
+    await assert.rejects(run(file, "--verify"), error => error.code === 1 && /^SKIP /m.test(error.stdout));
+  }
+  const {stdout} = await run("./runner.mjs", "--mock", "--verify");
+  assert.match(stdout, /SUMMARY passed=5 skipped=2 failures=0 preflight=false/);
+  await assert.rejects(run("./cli-e2e/smoke.mjs", "--verify", "--preflight"), /Verification cannot use preflight/);
+});
+
 test("readiness selects one route and requires its owned, ready health envelope", async t => {
   const base = "http://127.0.0.1:31337";
   const pid = 123;
