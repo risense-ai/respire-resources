@@ -26,5 +26,6 @@ assertion about arbitrary libraries from earlier releases.
 [Vectors and provenance](crypto/README.md) records the pinned historical
 encoders, deterministic generation, both namespaces, and version-specific
 inputs. The native codec probe checks exact plaintext and wrong-factor
-rejection. This is not the same as running compiled Runtime unlock and
-legacy recall for every version, or using a real system keyring.
+rejection. The separate compiled Windows run verifies all eight unlock cases
+and retrieves exact UTF-8 through legacy local RPC by ID. No vector-ranked
+recall or real system keyring is asserted.
