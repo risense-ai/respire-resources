@@ -45,3 +45,19 @@ data and decrypted text after reopen. It also briefly sets an incompatible
 synthetic live SQLite marker on the copy: application restore must refuse and
 leave the live database bytes and snapshot inventory unchanged. That is the
 application restore guard, not proof that a historical binary refuses launch.
+
+## Populated synthetic upgrade probe
+
+Run `verify-runtime-populated.rs` using the same dependencies and three
+arguments as above. It seeds a separate copy of the exact published schema,
+before invoking the migrator. The two memory rows are synthetic; the pending
+outbox is created by the actual SQLite triggers, and the review, grant, and
+query are added by the Runtime storage APIs. The added rows were not produced
+by the previously published executable.
+
+The Windows compatibility run recorded two memories, two pending operations,
+one review, one grant, and one query. The selected persisted fields matched
+exactly through upgrade and a second open. The portable snapshot contains both
+memories but excludes the share grant by design and leaves the source intact.
+The portable snapshot probe does not assert portable sync, review, or query
+state. The snapshot copies and newly generated credential data stay disposable.
