@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import {createHash} from "node:crypto";
-import {readFileSync} from "node:fs";
+import {copyFileSync, mkdtempDisposableSync, readFileSync} from "node:fs";
+import {tmpdir} from "node:os";
+import {join} from "node:path";
 import {DatabaseSync} from "node:sqlite";
 import {test} from "node:test";
-import {fileURLToPath} from "node:url";
+
 
 const fixture = new URL("./respire-1x-synthetic.db", import.meta.url);
 const pinned = "a081b149521d3dd516fdda50bc744249293fb30990e3b98d1ee392189fe02c9d";
@@ -11,7 +13,10 @@ const digest = () => createHash("sha256").update(readFileSync(fixture)).digest("
 
 test("frozen synthetic Runtime 1.x baseline has its released schema and version", () => {
   assert.equal(digest(), pinned);
-  const db = new DatabaseSync(fileURLToPath(fixture), {readOnly: true});
+  using tmp = mkdtempDisposableSync(join(tmpdir(), "respire-sqlite-golden-"));
+  const copied = join(tmp.path, "memory.db");
+  copyFileSync(fixture, copied);
+  const db = new DatabaseSync(copied, {readOnly: true});
   try {
     assert.equal(db.prepare("PRAGMA integrity_check").get().integrity_check, "ok");
     assert.equal(db.prepare("PRAGMA user_version").get().user_version, 0);
