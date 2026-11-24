@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Session import | Respire</title>
+  <link rel="stylesheet" href="../tokens/tokens.css">
+  <script defer src="../mock-api/fixture.js"></script>
+  <script defer src="gallery.js"></script>
+  <script defer src="screens.js"></script>
+</head>
+<body data-page="session-import">
+  <aside aria-label="Navigation"></aside>
+  <main>
+    <div class="toolbar"><span>Studio / Session import</span><label>Scenario <select id="scenario"></select></label></div>
+    <section class="heading"><h1>Import session notes</h1><p>Preview a synthetic session and select the notes to keep.</p></section>
+    <article><h2>Field session</h2><div id='results'></div><button id='action'>Import selected notes</button></article>
+    <p id="notice" role="status" aria-live="polite"></p>
+  </main>
+</body>
+</html>

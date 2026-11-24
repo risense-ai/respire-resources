@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Statistics | Respire</title>
+  <link rel="stylesheet" href="../tokens/tokens.css">
+  <script defer src="../mock-api/fixture.js"></script>
+  <script defer src="gallery.js"></script>
+  <script defer src="screens.js"></script>
+</head>
+<body data-page="stats">
+  <aside aria-label="Navigation"></aside>
+  <main>
+    <div class="toolbar"><span>Studio / Statistics</span><label>Scenario <select id="scenario"></select></label></div>
+    <section class="heading"><h1>Library statistics</h1><p>Inspect the distribution of memories across the active library.</p></section>
+    <section id='metrics' class='metrics'></section><article><header><h2>Memory distribution</h2><select id='mode' aria-label='Group memories by'><option>Topic</option><option>Hierarchy</option></select></header><div id='results'></div></article>
+    <article><h2>Owner metadata</h2><p>Read synthetic query counts, reviews and conflict receipts. This is not production authentication evidence.</p><button id="authorize">Enable synthetic owner session</button><div id="audit"></div></article>
+    <p id="notice" role="status" aria-live="polite"></p>
+  </main>
+</body>
+</html>

@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>IDE injection | Respire</title>
+  <link rel="stylesheet" href="../tokens/tokens.css">
+  <script defer src="../mock-api/fixture.js"></script>
+  <script defer src="gallery.js"></script>
+  <script defer src="screens.js"></script>
+</head>
+<body data-page="injection">
+  <aside aria-label="Navigation"></aside>
+  <main>
+    <div class="toolbar"><span>Studio / IDE injection</span><label>Scenario <select id="scenario"></select></label></div>
+    <section class="heading"><h1>IDE integration</h1><p>Preview a workspace instruction for a selected editor.</p></section>
+    <article><label>Editor<select id='mode'><option>VS Code</option><option>Zed</option></select></label><h2>Instruction preview</h2><pre id='results'></pre><button id='action'>Apply to preview</button></article>
+    <p id="notice" role="status" aria-live="polite"></p>
+  </main>
+</body>
+</html>

@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Organize | Respire</title>
+  <link rel="stylesheet" href="../tokens/tokens.css">
+  <script defer src="../mock-api/fixture.js"></script>
+  <script defer src="gallery.js"></script>
+  <script defer src="screens.js"></script>
+</head>
+<body data-page="organize">
+  <aside aria-label="Navigation"></aside>
+  <main>
+    <div class="toolbar"><span>Studio / Organize</span><label>Scenario <select id="scenario"></select></label></div>
+    <section class="heading"><h1>Organize memories</h1><p>Review suggested parent changes before applying a plan.</p></section>
+    <article><h2>Tree organization</h2><div class='actions'><button id='action'>Preview plan</button><button id='apply' disabled>Apply moves</button></div><div id='results'></div></article>
+    <article><h2>On-demand suggestions</h2><button class="secondary" id="suggest">Inspect suggestions</button><div id="suggestions"></div></article>
+    <p id="notice" role="status" aria-live="polite"></p>
+  </main>
+</body>
+</html>

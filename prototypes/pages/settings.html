@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Settings | Respire</title>
+  <link rel="stylesheet" href="../tokens/tokens.css">
+  <script defer src="../mock-api/fixture.js"></script>
+  <script defer src="gallery.js"></script>
+  <script defer src="screens.js"></script>
+</head>
+<body data-page="settings">
+  <aside aria-label="Navigation"></aside>
+  <main>
+    <div class="toolbar"><span>Studio / Settings</span><label>Scenario <select id="scenario"></select></label></div>
+    <section class="heading"><h1>Workspace settings</h1><p>Configure diary capture for the synthetic Runtime.</p></section>
+    <article><h2>Diary capture</h2><label>Capture mode<select id='mode'><option>manual</option><option>automatic</option></select></label><button id='action'>Save settings</button><div id='results'></div></article>
+    <p id="notice" role="status" aria-live="polite"></p>
+  </main>
+</body>
+</html>

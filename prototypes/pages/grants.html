@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Access grants | Respire</title>
+  <link rel="stylesheet" href="../tokens/tokens.css">
+  <script defer src="../mock-api/fixture.js"></script>
+  <script defer src="gallery.js"></script>
+  <script defer src="screens.js"></script>
+</head>
+<body data-page="grants">
+  <aside aria-label="Navigation"></aside>
+  <main>
+    <div class="toolbar"><span>Studio / Access grants</span><label>Scenario <select id="scenario"></select></label></div>
+    <section class="heading"><h1>Access grants</h1><p>Review the synthetic sharing permissions for this workspace.</p></section>
+    <article><h2>Shared access</h2><p>Enable the synthetic owner session again after switching accounts or spaces.</p><button id="authorize">Enable synthetic owner session</button><div id='results'></div></article>
+    <p id="notice" role="status" aria-live="polite"></p>
+  </main>
+</body>
+</html>

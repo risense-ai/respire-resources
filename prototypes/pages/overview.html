@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Overview | Respire</title>
+  <link rel="stylesheet" href="../tokens/tokens.css">
+  <script defer src="../mock-api/fixture.js"></script>
+  <script defer src="gallery.js"></script>
+  <script defer src="screens.js"></script>
+</head>
+<body data-page="overview">
+  <aside aria-label="Navigation"></aside>
+  <main>
+    <div class="toolbar"><span>Studio / Overview</span><label>Scenario <select id="scenario"></select></label></div>
+    <section class="heading"><h1>Workspace overview</h1><p>A snapshot of your notebook and its latest activity.</p></section>
+    <section class='metrics' id='metrics'></section><article><header><h2>Recent memories</h2><a href='workspace.html'>Open workspace &rarr;</a></header><div id='results'></div></article>
+    <p id="notice" role="status" aria-live="polite"></p>
+  </main>
+</body>
+</html>

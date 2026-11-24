@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Storage | Respire</title>
+  <link rel="stylesheet" href="../tokens/tokens.css">
+  <script defer src="../mock-api/fixture.js"></script>
+  <script defer src="gallery.js"></script>
+  <script defer src="screens.js"></script>
+</head>
+<body data-page="storage">
+  <aside aria-label="Navigation"></aside>
+  <main>
+    <div class="toolbar"><span>Studio / Storage</span><label>Scenario <select id="scenario"></select></label></div>
+    <section class="heading"><h1>Local storage</h1><p>Inspect synthetic assets and the model currently in use.</p></section>
+    <article><h2>Installed assets</h2><div id='results'></div></article>
+    <article><h2>Synthetic backup</h2><p>Export fixture bytes, then restore that same export. No user files or credentials are read.</p><div class="actions"><button id="export">Export fixture archive</button><button id="restore" class="secondary" disabled>Restore last export</button></div></article>
+    <p id="notice" role="status" aria-live="polite"></p>
+  </main>
+</body>
+</html>

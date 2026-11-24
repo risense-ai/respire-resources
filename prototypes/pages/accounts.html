@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Accounts | Respire</title>
+  <link rel="stylesheet" href="../tokens/tokens.css">
+  <script defer src="../mock-api/fixture.js"></script>
+  <script defer src="gallery.js"></script>
+  <script defer src="screens.js"></script>
+</head>
+<body data-page="accounts">
+  <aside aria-label="Navigation"></aside>
+  <main>
+    <div class="toolbar"><span>Studio / Accounts</span><label>Scenario <select id="scenario"></select></label></div>
+    <section class="heading"><h1>Account profiles</h1><p>Inspect the active account and switch synthetic profiles.</p></section>
+    <article><h2>Available profiles</h2><button class="secondary" id="sync">Sync synthetic outbox</button><div id='results'></div></article>
+    <article><h2>Memory spaces</h2><label>New or replacement name<input id="space-name" placeholder="Research notebook"></label><button id="create">Create space</button><div id="spaces"></div></article>
+    <p id="notice" role="status" aria-live="polite"></p>
+  </main>
+</body>
+</html>
