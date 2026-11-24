@@ -27,16 +27,21 @@ Its SHA-256 is
 It uses a known synthetic key from an existing compatibility test.
 It contains no user data. The row goes into a disposable copy of the golden.
 
-Run `verify-runtime-upgrade.rs` as `src/main.rs` in a disposable Rust 2021
-Cargo project. Add a path dependency named `respire_storage` on the
-monorepo's `apps/runtime/crates/storage`, plus `anyhow = "1"`,
+Run `verify-runtime-upgrade.rs` as `src/main.rs` in an isolated Rust 2021
+Cargo project. Add path dependencies named `respire_storage` and
+`respire_app_domain` on the monorepo's `apps/runtime/crates/storage` and
+`apps/runtime/crates/app-domain`, respectively. Also add `anyhow = "1"`,
 `serde_json = "1"` and `rusqlite = { version = "0.32", features = ["bundled",
 "functions", "backup"] }`. Configure that checkout's normal native build
-dependencies. Pass the frozen database, encrypted row JSON, and a new test
-directory that does not yet exist.
+dependencies. Pass the frozen database, encrypted row JSON and a new test
+directory that does not exist yet.
 
-The probe installs Runtime's real SQLite witness functions before seeding the
-row. It checks version, integrity, foreign keys and exact encrypted fields
-before upgrade, after two native `LocalStore::open` calls, and after restoring
-via SQLite's native backup API and reopening with `LocalStore`. This is not an
-application-level backup/rollback, a black-box unlock, or a downgrade test.
+The probe enables Runtime's real SQLite witness functions, plants the synthetic
+row in a disposable copy, and verifies the original encrypted data and SQLite
+integrity through native upgrade and reopen. It then creates and verifies a
+real Runtime application snapshot, rejects a wrong account/key, and performs
+authenticated restore and completion. The probe checks sync isolation and exact
+data and decrypted text after reopen. It also briefly sets an incompatible
+synthetic live SQLite marker on the copy: application restore must refuse and
+leave the live database bytes and snapshot inventory unchanged. That is the
+application restore guard, not proof that a historical binary refuses launch.

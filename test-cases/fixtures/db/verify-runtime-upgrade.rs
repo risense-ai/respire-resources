@@ -1,10 +1,7 @@
 use anyhow::{ensure, Context, Result};
 use respire_storage::transport::local::LocalStore;
 use rusqlite::{params, Connection, OpenFlags};
-use std::{
-    path::{Path, PathBuf},
-    time::Duration,
-};
+use std::path::{Path, PathBuf};
 
 type Witness = (String, String, String, String, String, String, String, bool);
 
@@ -28,8 +25,8 @@ fn main() -> Result<()> {
     let row_path = PathBuf::from(args.next().context("synthetic row")?);
     let work = PathBuf::from(args.next().context("isolated work dir")?);
     std::fs::create_dir(&work)?;
-    let data = work.join("memory.db");
-    let restore = work.join("restored.db");
+    let data = work.join("rsrs.db");
+
     std::fs::copy(&baseline, &data)?;
     let row: serde_json::Value = serde_json::from_slice(&std::fs::read(row_path)?)?;
     let field = |key: &str| row[key].as_str().with_context(|| format!("missing {key}"));
@@ -65,19 +62,79 @@ fn main() -> Result<()> {
         );
         println!("{phase}: native LocalStore and SQLite integrity verified");
     }
+
+    use respire_app_domain::{lock::LibraryLock, snapshot, SessionKeys};
+    let key = SessionKeys::from_urk([42; 32])?;
+    let text = key.decrypt_content(&expected.2, &expected.3)?;
+    ensure!(text.contains("Frozen synthetic historical format sample."));
+    let backup = snapshot::create(&work, &expected.1, "card018-golden", &key)?;
+    ensure!(backup.entries == 1);
     {
-        let from = Connection::open_with_flags(&data, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
-        let mut to = Connection::open(&restore)?;
-        rusqlite::backup::Backup::new(&from, &mut to)?.run_to_completion(
-            16,
-            Duration::from_millis(5),
-            None,
-        )?;
+        let db = Connection::open(&data)?;
+        respire_storage::transport::local::register_witness_functions(&db)?;
+        ensure!(db.execute("DELETE FROM memories WHERE id=?", [id])? == 1);
     }
-    drop(LocalStore::open(&restore).context("open restored backup in native Runtime Storage")?);
-    ensure!(check(&restore, id)? == expected);
-    println!(
-        "sqlite backup/restore and native LocalStore reopen: exact encrypted witness preserved"
+    ensure!(
+        check(&data, id).is_err(),
+        "witness still exists before restore"
     );
+    let lock = LibraryLock::acquire(&work, std::time::Duration::from_secs(2))?;
+    let bad_key = SessionKeys::from_urk([43; 32])?;
+    ensure!(snapshot::restore_locked(&work, &expected.1, &bad_key, &backup.id, &lock).is_err());
+    ensure!(
+        snapshot::restore_locked(&work, "wrong-fixture-account", &key, &backup.id, &lock).is_err()
+    );
+    ensure!(check(&data, id).is_err(), "negative attempts wrote the row");
+    // Synthetic incompatible live version for a restore schema guard test only.
+    const FUTURE_VERSION: i64 = 999_001;
+    {
+        let db = Connection::open(&data)?;
+        db.pragma_update(None, "user_version", FUTURE_VERSION)?;
+        db.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)")?;
+    }
+    let before_db = std::fs::read(&data)?;
+    let inventory_before = snapshot::list(&work)?.len();
+    let rejected = snapshot::restore_locked(&work, &expected.1, &key, &backup.id, &lock)
+        .err()
+        .context("restore accepted incompatible synthetic live version")?;
+    ensure!(
+        rejected.to_string().contains("snapshot schema differs"),
+        "unexpected restore error: {rejected:#}"
+    );
+    ensure!(
+        std::fs::read(&data)? == before_db,
+        "rejected restore changed live database bytes"
+    );
+    ensure!(
+        snapshot::list(&work)?.len() == inventory_before,
+        "rejected restore created another snapshot"
+    );
+    {
+        let db = Connection::open_with_flags(&data, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+        let version: i64 = db.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+        let sentinel_count: usize =
+            db.query_row("SELECT count(*) FROM memories WHERE id=?", [id], |r| {
+                r.get(0)
+            })?;
+        ensure!(
+            version == FUTURE_VERSION && sentinel_count == 0,
+            "rejected restore changed live state"
+        );
+    }
+    println!("incompatible synthetic live SQLite version rejected by app restore; exact live bytes unchanged (not a binary downgrade guard)");
+    {
+        let db = Connection::open(&data)?;
+        db.pragma_update(None, "user_version", 0_i64)?;
+    }
+    let receipt = snapshot::restore_locked(&work, &expected.1, &key, &backup.id, &lock)?;
+    ensure!(receipt.sync_quarantined);
+    ensure!(snapshot::ensure_sync_allowed(&work).is_err());
+    snapshot::complete_restore(&work, &receipt)?;
+    drop(lock);
+    drop(LocalStore::open(&data)?);
+    let actual = check(&data, id)?;
+    ensure!(actual == expected, "restore changed encrypted row");
+    ensure!(key.decrypt_content(&actual.2, &actual.3)? == text);
+    println!("application snapshot create, wrong account/key rejection, authenticated restore, complete_restore, native LocalStore reopen and exact encrypted witness verified");
     Ok(())
 }
