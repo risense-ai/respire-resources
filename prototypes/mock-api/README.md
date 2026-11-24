@@ -58,6 +58,15 @@ an interactive backup fixture, not a real backup-format compatibility test.
 SSE uses named `progress`, `completed`, `failed`, and `cancelled` events whose
 JSON data is `OperationStatus`; tests reconstruct and validate `OperationEvent`.
 Finished streams replay their terminal state. Reads never advance operations.
+Scope changes close open streams immediately. Each frame also checks current
+operation access. Jobs can finish in the background, and their timers stop
+at a terminal state. New subscriptions and replay check operation access again.
+
+The gallery uses `/preview/scope` and `X-Preview-Scope` to track the synthetic
+account and selected space. It rechecks on tab activation and before actions
+and polls visible HTTP tabs once a second. A changed scope replaces the screen
+and discards responses from the earlier screen. File previews keep a separate
+in-memory fixture per page and use the same scope checks.
 
 Controls without a canonical Runtime operation use `/preview/` for synthetic
 model uninstall and profile selection. Grant revocation uses canonical routes
@@ -67,7 +76,7 @@ Offline checks without opening sockets:
 
 ```sh
 node --test prototypes/mock-api/parity.test.mjs prototypes/mock-api/behavior.test.mjs prototypes/mock-api/gallery.test.mjs
-node --test --test-name-pattern="16 exact|all five|HTTP adapter" prototypes/mock-api/server.test.mjs
+node --test --test-name-pattern="16 exact|all five|HTTP adapter|direct operation" prototypes/mock-api/server.test.mjs
 node process/scripts/validate-openspec.mjs
 ```
 

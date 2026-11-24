@@ -1,4 +1,5 @@
 import http from "node:http";
+import {setMaxListeners} from "node:events";
 import {readFile} from "node:fs/promises";
 import {pathToFileURL} from "node:url";
 import "./fixture.js";
@@ -51,19 +52,27 @@ export function server({interval = 700} = {}) {
       const events = /^\/v1\/operations\/([^/]+)\/events$/.exec(path);
       if (req.method === "GET" && events) {
         const id = events[1];
-        const initial = fixture.request("GET","/v1/operations/" + id,{},req.headers).data;
+        const {initial,signal,canRead} = fixture.operationChannel(id,req.headers);
         res.writeHead(200,{"Content-Type":"text/event-stream"});
+        const listeners = initial.state === "running" ? watch(name,id) : undefined;
+        const detach = () => {
+          listeners?.delete(send);
+          signal.removeEventListener("abort",close);
+        };
+        const close = () => { detach(); res.end(); };
         const send = status => {
+          if (!canRead()) return close();
           const event = status.state === "running" ? "progress" : status.state;
           res.write("event: " + event + "\ndata: " + JSON.stringify(status) + "\n\n");
-          if (event !== "progress") res.end();
+          if (event !== "progress") close();
         };
-        send(initial);
-        if (initial.state === "running") {
-          const listeners = watch(name,id);
+        if (listeners) {
           listeners.add(send);
-          res.once("close",()=>listeners.delete(send));
+          setMaxListeners(0,signal);
+          signal.addEventListener("abort",close,{once:true});
+          res.once("close",detach);
         }
+        send(initial);
         return;
       }
       let body = {};
@@ -83,6 +92,7 @@ export function server({interval = 700} = {}) {
         }
       }
       const {status,data,media} = fixture.request(req.method,req.url,body,req.headers);
+      res.setHeader("X-Preview-Scope",String(fixture.scope().generation));
       if (data?.operation_id && data.status === "running") watch(name,data.operation_id);
       if (status === 204) res.writeHead(status).end();
       else if (media) {

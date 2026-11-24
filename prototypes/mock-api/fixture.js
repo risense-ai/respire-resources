@@ -77,32 +77,47 @@
       {epoch:"fixture-epoch",revision:"9007199254740993",memory_id:"note-1",state:"pending",current_head_revision:"9007199254740994"},
       {epoch:"fixture-epoch",revision:"2",memory_id:"note-3",state:"processed",resolution:"keep_local"}
     ] : [];
-    function invalidate() { leases.clear(); challenges.clear(); }
+    let generation = 0;
+    let lifetime = new AbortController();
+    const scope = () => ({generation, activeSpaceId:activeSpace() ?? null, signedIn:!!account});
+    function invalidate() {
+      leases.clear();
+      challenges.clear();
+      generation++;
+      const previous = lifetime;
+      lifetime = new AbortController();
+      previous.abort();
+    }
     function record(item, action) {
       const entries = reviews.get(item.id) ?? [];
       entries.unshift({sequence:String(entries.length + 1),record_revision:"fixture-" + (entries.length + 1),action,happened_at:stamp});
       reviews.set(item.id,entries);
     }
-    let outbox = multi ? 4 : 0;
+    const outbox = new Map([...profiles.keys()].map(id=>[id,multi ? 4 : 0]));
     let seq = 0;
     const ops = new Map();
     const archives = new Map();
-    const canAccessOperation = op => op.space ? canAccessSpace(op.space) : op.kind !== "sync" || !!account;
+    const canAccessOperation = op => op.space ? canAccessSpace(op.space) : op.kind !== "sync" || op.syncAccount === account;
     function start(kind, target, space) {
       if ([...ops.values()].some(o => o.kind === kind && o.state === "running" && canAccessOperation(o)))
         problem(409, "operation_in_progress", "An operation of this kind is already running.");
       const operation_id = "op-" + (++seq);
-      ops.set(operation_id, {operation_id, kind, state:"running", progress_percent:0, target, space});
+      ops.set(operation_id, {operation_id, kind, state:"running", progress_percent:0, target, space, syncAccount:kind === "sync" ? account : undefined});
       return {operation_id, status:"running"};
     }
     if (scenario === "downloading-sse") start("model_download", models[1].id);
-    function operationStatus({target, space, ...status}) {
+    function operationStatus({target, space, syncAccount, ...status}) {
       return status;
     }
     function snapshot(id) {
       const op = ops.get(id);
       if (!op || !canAccessOperation(op)) problem(404, "operation_not_found", "Unknown operation.");
       return operationStatus(op);
+    }
+    function operationChannel(id, headers) {
+      const initial = request("GET","/v1/operations/" + id,{},headers).data;
+      const {signal} = lifetime;
+      return {initial, signal, canRead:()=>!signal.aborted && canAccessOperation(ops.get(id))};
     }
     function tick(id) {
       const op = ops.get(id);
@@ -125,7 +140,7 @@
                 detail:"Fixture index verification failed. Previous model unchanged.", retryable:false};
             } else active = op.target;
           }
-          if (op.kind === "sync") outbox = 0;
+          if (op.kind === "sync") outbox.set(op.syncAccount,0);
           if (op.kind === "organize") {
             if (op.target.some(move => !memories.some(m => m.id === move.memory_id && !deleted.has(m.id)) || !memories.some(m => m.id === move.new_parent_id && !deleted.has(m.id)))) {
               op.state = "failed";
@@ -166,6 +181,8 @@
       const path = url.pathname;
       const key = method + " " + path;
       const ok = (data, status = 200) => ({status, data});
+      if (headers["x-preview-scope"] !== undefined && headers["x-preview-scope"] !== String(generation))
+        problem(409,"preview_scope_changed","The preview account or space changed.");
       if (key === "POST /v1/auth/handshake") {
         const proof = headers["x-respire-handshake-proof"];
         const challengeExpires = challenges.get(proof);
@@ -343,7 +360,7 @@
         ops.get(id).state = "cancelled";
         return ok(snapshot(id),202);
       }
-      if (key === "GET /v1/sync/status") return ok({state:account && [...ops.values()].some(o=>o.kind === "sync" && o.state === "running") ? "syncing" : "idle",pending_outbox:account ? outbox : 0,last_synced_at:account && !empty ? stamp : null});
+      if (key === "GET /v1/sync/status") return ok({state:account && [...ops.values()].some(o=>o.kind === "sync" && o.state === "running" && canAccessOperation(o)) ? "syncing" : "idle",pending_outbox:outbox.get(account) ?? 0,last_synced_at:account && !empty ? stamp : null});
       if (key === "POST /v1/sync/trigger") {
         if (!account) problem(401,"account_required","Sign in to sync the fixture account.");
         return ok(start("sync"),202);
@@ -353,11 +370,11 @@
         text(body.name,"space name");
         const created = {id:"space-" + (++seq),name:body.name,role:"owner"};
         const activate = !activeSpace();
-        if (activate) selectSpace(created.id);
         spaces.push(created);
         owners.set(created.id,[account]);
         membersBySpace.set(created.id,[{member_id:"owner",role:"owner",status:"active"}]);
         grantsBySpace.set(created.id,[]);
+        if (activate) selectSpace(created.id);
         return ok({...created,active:activate},201);
       }
       if (spacePath && !path.endsWith("/members")) {
@@ -407,6 +424,7 @@
         return ok({...config});
       }
       // Preview-only controls have no canonical Runtime operation.
+      if (key === "GET /preview/scope") return ok(scope());
       if (key === "GET /preview/library") return ok({installed:[...installed],operations:[...ops.values()].filter(canAccessOperation).map(operationStatus),accounts:account ? [...profiles.keys()] : []});
       if (key === "POST /preview/owner-challenge") {
         if (!account) problem(401,"owner_proof_rejected","Synthetic owner proof rejected.");
@@ -427,7 +445,7 @@
       }
       problem(404,"route_not_found","Unknown fixture route.");
     }
-    return {request,tick,snapshot,advanceTime:seconds => { clock += integer(seconds,0,Number.MAX_SAFE_INTEGER,"seconds"); }};
+    return {request,tick,snapshot,scope,operationChannel,advanceTime:seconds => { clock += integer(seconds,0,Number.MAX_SAFE_INTEGER,"seconds"); }};
   }
   globalThis.RespireFixture = {scenarios,create,problem};
 })();

@@ -1,5 +1,5 @@
 "use strict";
-async function modelsOrStorage(health) {
+async function modelsOrStorage(health,{el,notice,run,api,bind,result,stream}) {
   const modelPage = page === "models";
   const capable = flag => health.capabilities.includes(flag);
   if (!capable("model.catalog.v2")) throw new Error("Model catalog is unavailable.");
@@ -49,7 +49,8 @@ async function modelsOrStorage(health) {
   const current = library.operations.find(op=>op.state === "running" && op.kind.startsWith("model_"));
   if (modelPage && current) await monitor(current.operation_id);
 }
-async function setup() {
+async function setup(view) {
+  const {el,notice,run,api,bind,result,metrics,scope,stream,authorizeOwner,ownerApi} = view;
   const health = await api("/v1/health");
   if (!health.capabilities.includes("openapi.v1")) throw new Error("Runtime API unavailable.");
   const list = async(query="") => api("/v1/memories?limit=12"+query);
@@ -74,7 +75,7 @@ async function setup() {
         await stream(op.operation_id,s=>notice("Synthetic restore "+s.state+" / "+s.progress_percent+"%"));
       });
     }
-    return modelsOrStorage(health);
+    return modelsOrStorage(health,view);
   }
   if (page === "wizard") {
     const render = async()=>{
@@ -85,7 +86,11 @@ async function setup() {
     bind("action",async()=>{await api("/v1/host/transactions/login","POST",{mode:"offline_keygen"}); await render();});
     return render();
   }
-  if (page === "overview") { showMetrics(await light()); return result(notes((await list()).items.slice(0,6))); }
+  if (page === "overview") {
+    if (!scope.activeSpaceId) return result("<p>No active space. Sign in or create a demo space in Accounts.</p>");
+    showMetrics(await light());
+    return result(notes((await list()).items.slice(0,6)));
+  }
   if (page === "workspace") {
     let batch = await list();
     function draw() {
@@ -184,6 +189,11 @@ async function setup() {
     });
   }
   if (page === "stats") {
+    el("authorize").disabled = !scope.signedIn || !scope.activeSpaceId;
+    if (!scope.activeSpaceId) {
+      el("mode").disabled = true;
+      return result("<p>No active space. Statistics appear after you select a space.</p>");
+    }
     let all = [];
     async function reloadDistribution() {
       const items = [];
@@ -264,6 +274,11 @@ async function setup() {
     return result("<p>Enable the synthetic owner session to load grant metadata.</p>");
   }
   if (page === "space-members") {
+    if (!scope.activeSpaceId) {
+      el("space").disabled = true;
+      el("action").disabled = true;
+      return result("<p>No active space. Select a space in Accounts to see its members.</p>");
+    }
     const {spaces} = await api("/v1/spaces");
     for (const s of spaces) el("space").add(new Option(s.name,s.id,false,s.active));
     const path = () => "/v1/spaces/"+encodeURIComponent(el("space").value)+"/members";
@@ -285,4 +300,4 @@ async function setup() {
     return draw();
   }
 }
-run(setup);
+startPreview();
