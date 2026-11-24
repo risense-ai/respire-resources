@@ -33,6 +33,10 @@
     if (multi) spaces.push({id:"archive", name:"Personal archive", role:"owner"});
     // Both seeded profiles can browse and manage the shared fixture spaces.
     const owners = new Map(spaces.map(s => [s.id,[...profiles.keys()]]));
+    if (empty) {
+      spaces.push({id:"demo", name:"Offline demo", role:"owner"});
+      owners.set("demo",[null]);
+    }
     const memories = Array.from({length:empty ? 0 : 1000}, (_, i) => ({
       id:"note-" + (i + 1), space_id:multi && i % 2 ? "archive" : "studio",
       title:notes[i % notes.length] + " / " + (i + 1), category:topics[i % topics.length],
@@ -41,9 +45,15 @@
       parent_id:i < 4 ? null : "note-" + (1 + i % 4), tags:["notebook"], created_at:stamp, updated_at:stamp
     }));
     let account = empty ? null : "studio";
-    const profile = () => account ?? "studio";
-    const visibleSpaces = () => spaces.filter(s=>owners.get(s.id).includes(profile()));
-    const activeSpace = () => profiles.get(profile()) ?? visibleSpaces()[0]?.id;
+    let guestSpace;
+    const canAccessSpace = id => owners.get(id)?.includes(account);
+    const visibleSpaces = () => spaces.filter(s=>canAccessSpace(s.id));
+    const activeSpace = () => (account ? profiles.get(account) : guestSpace) ?? visibleSpaces()[0]?.id;
+    function selectSpace(id) {
+      if (account) profiles.set(account,id);
+      else guestSpace = id;
+      invalidate();
+    }
     let transaction = "none";
     const journals = new Map([["studio", empty ? [] : [{id:"day-1", date, content:"Reviewed the field notes and collected open questions for the next session.", updated_at:stamp}]]]);
     let active = models[0].id;
@@ -77,29 +87,34 @@
     let seq = 0;
     const ops = new Map();
     const archives = new Map();
-    function start(kind, target) {
-      if ([...ops.values()].some(o => o.kind === kind && o.state === "running"))
+    const canAccessOperation = op => op.space ? canAccessSpace(op.space) : op.kind !== "sync" || !!account;
+    function start(kind, target, space) {
+      if ([...ops.values()].some(o => o.kind === kind && o.state === "running" && canAccessOperation(o)))
         problem(409, "operation_in_progress", "An operation of this kind is already running.");
       const operation_id = "op-" + (++seq);
-      ops.set(operation_id, {operation_id, kind, state:"running", progress_percent:0, target});
+      ops.set(operation_id, {operation_id, kind, state:"running", progress_percent:0, target, space});
       return {operation_id, status:"running"};
     }
     if (scenario === "downloading-sse") start("model_download", models[1].id);
-    function snapshot(id) {
-      if (!ops.has(id)) problem(404, "operation_not_found", "Unknown operation.");
-      const {target, ...status} = ops.get(id);
+    function operationStatus({target, space, ...status}) {
       return status;
+    }
+    function snapshot(id) {
+      const op = ops.get(id);
+      if (!op || !canAccessOperation(op)) problem(404, "operation_not_found", "Unknown operation.");
+      return operationStatus(op);
     }
     function tick(id) {
       const op = ops.get(id);
-      if (snapshot(id).state === "running") {
+      if (!op) problem(404, "operation_not_found", "Unknown operation.");
+      if (op.state === "running") {
         op.progress_percent += 25;
         if (op.progress_percent === 100) {
           op.state = "completed";
           if (op.kind === "backup_import" && !spaces.some(s => s.id === op.target.space)) {
             op.state = "failed";
             op.error = {type:"about:blank",title:"Conflict",status:409,code:"space_deleted",detail:"The restore destination was deleted."};
-            return snapshot(id);
+            return operationStatus(op);
           }
           if (op.kind === "model_download") installed.add(op.target);
           if (op.kind === "model_switch") {
@@ -144,7 +159,7 @@
           }
         }
       }
-      return snapshot(id);
+      return operationStatus(op);
     }
     function request(method, address, body = {}, headers = {authorization:"Bearer synthetic-preview-only"}) {
       const url = new URL(address, "http://127.0.0.1");
@@ -224,9 +239,11 @@
         const limit = "top_k" in body ? body.top_k : 10;
         if (!Number.isInteger(limit) || limit < 1 || limit > 100) problem(400,"invalid_parameter","Invalid top_k");
         const hits = items.filter(m => [m.title,m.content,m.category].join(" ").toLowerCase().includes(body.query.toLowerCase())).slice(0,limit).map(memory => ({memory,score:1}));
-        const entries = queries.get(space) ?? [];
-        entries.unshift({id:String(entries.length + 1),recorded_at:stamp,candidate_count:hits.length,adopted_count:0,good_count:0,bad_count:0});
-        queries.set(space,entries);
+        if (selected) {
+          const entries = queries.get(space) ?? [];
+          entries.unshift({id:String(entries.length + 1),recorded_at:stamp,candidate_count:hits.length,adopted_count:0,good_count:0,bad_count:0});
+          queries.set(space,entries);
+        }
         return ok({hits});
       }
       const memoryPath = /^\/v1\/memories\/([^/]+)(\/reviews)?$/.exec(path);
@@ -249,9 +266,10 @@
         text(body.memory_id,"memory_id");
         const item = itemById(body.memory_id);
         if (item.content.trim().split(/\s+/).length < 2) problem(409,"cannot_split","The selected note has only one word.");
-        return ok(start("organize_split",item.id),202);
+        return ok(start("organize_split",item.id,space),202);
       }
       if (key === "GET /v1/backups/export") {
+        if (!selected) problem(409,"no_active_space","Create a space first.");
         const archive = {format:"respire-synthetic-fixture-v1",space,items,diary};
         const encoded = JSON.stringify(archive);
         archives.set(encoded,structuredClone(archive));
@@ -259,9 +277,10 @@
       }
       if (key === "POST /v1/backups/import") {
         if (!(body instanceof Uint8Array)) problem(415,"expected_archive","Send synthetic archive bytes.");
+        if (!selected) problem(409,"no_active_space","Create a space first.");
         const archive = archives.get(new TextDecoder().decode(body));
         if (!archive || archive.space !== space) problem(400,"invalid_archive","Only an unchanged fixture export for this space can be restored.");
-        return ok(start("backup_import",structuredClone(archive)),202);
+        return ok(start("backup_import",structuredClone(archive),space),202);
       }
       if (key === "GET /v1/grants") return ok({items:grants});
       if (method === "DELETE" && /^\/v1\/grants\/[^/]+$/.test(path)) {
@@ -294,6 +313,7 @@
         return ok(entry);
       }
       if (key === "POST /v1/organize/deepen/plan") {
+        if (!selected) problem(409,"no_active_space","Create a space first.");
         const root = body.parent_id == null ? items[0] : itemById(body.parent_id);
         const moves = items.slice(4,8).filter(m => m.id !== root.id && m.parent_id !== root.id).map(m => ({memory_id:m.id,new_parent_id:root.id,reason:"Group related research notes"}));
         const plan = {plan_id:"plan-" + space,moves};
@@ -303,7 +323,7 @@
       if (key === "POST /v1/organize/deepen/apply") {
         const plan = plans.get(body.plan_id);
         if (!selected || !plan || !plan.moves.length) problem(409,"invalid_plan","Preview an applicable plan first.");
-        const op = start("organize",plan.moves);
+        const op = start("organize",plan.moves,space);
         plans.delete(body.plan_id);
         return ok(op,202);
       }
@@ -323,16 +343,19 @@
         ops.get(id).state = "cancelled";
         return ok(snapshot(id),202);
       }
-      if (key === "GET /v1/sync/status") return ok({state:[...ops.values()].some(o=>o.kind === "sync" && o.state === "running") ? "syncing" : "idle",pending_outbox:outbox,last_synced_at:empty ? null : stamp});
-      if (key === "POST /v1/sync/trigger") return ok(start("sync"),202);
+      if (key === "GET /v1/sync/status") return ok({state:account && [...ops.values()].some(o=>o.kind === "sync" && o.state === "running") ? "syncing" : "idle",pending_outbox:account ? outbox : 0,last_synced_at:account && !empty ? stamp : null});
+      if (key === "POST /v1/sync/trigger") {
+        if (!account) problem(401,"account_required","Sign in to sync the fixture account.");
+        return ok(start("sync"),202);
+      }
       if (key === "GET /v1/spaces") return ok({spaces:visibleSpaces().map(s => ({...s,active:s.id === activeSpace()}))});
       if (key === "POST /v1/spaces") {
         text(body.name,"space name");
         const created = {id:"space-" + (++seq),name:body.name,role:"owner"};
         const activate = !activeSpace();
-        if (activate) { profiles.set(profile(),created.id); invalidate(); }
+        if (activate) selectSpace(created.id);
         spaces.push(created);
-        owners.set(created.id,[profile()]);
+        owners.set(created.id,[account]);
         membersBySpace.set(created.id,[{member_id:"owner",role:"owner",status:"active"}]);
         grantsBySpace.set(created.id,[]);
         return ok({...created,active:activate},201);
@@ -344,7 +367,7 @@
           if ("active" in body && typeof body.active !== "boolean") problem(400,"invalid_active","Active must be a boolean.");
           if (body.active === false && activeSpace() === space) problem(409,"active_space","Activate another space first.");
           if ("name" in body) selected.name = body.name;
-          if (body.active && activeSpace() !== space) { profiles.set(profile(),space); invalidate(); }
+          if (body.active && activeSpace() !== space) selectSpace(space);
           return ok({...selected,active:activeSpace() === space});
         }
         if (method === "DELETE") {
@@ -384,7 +407,7 @@
         return ok({...config});
       }
       // Preview-only controls have no canonical Runtime operation.
-      if (key === "GET /preview/library") return ok({installed:[...installed],operations:[...ops.keys()].map(snapshot),accounts:[...profiles.keys()]});
+      if (key === "GET /preview/library") return ok({installed:[...installed],operations:[...ops.values()].filter(canAccessOperation).map(operationStatus),accounts:account ? [...profiles.keys()] : []});
       if (key === "POST /preview/owner-challenge") {
         if (!account) problem(401,"owner_proof_rejected","Synthetic owner proof rejected.");
         const now = currentTime();
@@ -398,7 +421,10 @@
         if (!installed.delete(body.model_id)) problem(404,"model_missing","Model is not installed.");
         return ok({installed:[...installed]});
       }
-      if (key === "POST /preview/account" && profiles.has(body.id)) { account = body.id; invalidate(); return ok({account}); }
+      if (key === "POST /preview/account") {
+        if (!account) problem(401,"account_required","Sign in before switching fixture accounts.");
+        if (profiles.has(body.id)) { account = body.id; invalidate(); return ok({account}); }
+      }
       problem(404,"route_not_found","Unknown fixture route.");
     }
     return {request,tick,snapshot,advanceTime:seconds => { clock += integer(seconds,0,Number.MAX_SAFE_INTEGER,"seconds"); }};

@@ -151,12 +151,129 @@ test("account profiles and owned spaces are independent",()=>{
   assert.deepEqual(accounts(),["studio","archive"]);
 
   const empty = globalThis.RespireFixture.create("empty");
-  empty.request("POST","/v1/spaces",{name:"Offline notebook"});
+  assert.equal(empty.request("GET","/v1/health").data.active_space_id,"demo");
+  const offline = empty.request("POST","/v1/spaces",{name:"Offline notebook"}).data;
+  empty.request("PATCH","/v1/spaces/"+offline.id,{active:true});
+  const note = empty.request("POST","/v1/memories",{content:"Offline fixture note"}).data;
   assert.equal(empty.request("GET","/v1/host/account").data.account_id,null);
+  assert.throws(()=>empty.request("GET","/v1/spaces/studio"),failure(404));
   empty.request("POST","/v1/host/transactions/login",{mode:"offline_keygen"});
   assert.equal(empty.request("GET","/v1/host/account").data.account_id,"studio");
+  assert.equal(empty.request("GET","/v1/health").data.active_space_id,"studio");
   assert.deepEqual(empty.request("GET","/preview/library").data.accounts,["studio"]);
+  assert.throws(()=>empty.request("GET","/v1/memories/"+note.id+"?space_id="+offline.id),failure(404));
+  empty.request("POST","/v1/host/transactions/logout");
+  assert.equal(empty.request("GET","/v1/health").data.active_space_id,offline.id);
+  assert.deepEqual(empty.request("GET","/v1/memories").data.items,[note]);
 });
+for (const transport of ["direct fixture","HTTP adapter"]) {
+  test(`${transport} isolates signed-out guests and restores the Studio selection on login`,async t=>{
+    const scenario = "multi-account";
+    const http = transport === "HTTP adapter" ? harness(60000) : null;
+    const fixture = http ? null : globalThis.RespireFixture.create(scenario);
+    if (http) t.after(http.close);
+    async function call(method,path,body,status = 200,headers = {}) {
+      let response;
+      if (http) {
+        const binary = body instanceof Uint8Array;
+        const input = binary ? Buffer.from(body) : body;
+        const responseUrl = path + (path.includes("?") ? "&" : "?") + "scenario=" + scenario;
+        const wire = await http.call(method,responseUrl,input,{...local,...headers,
+          ...(binary ? {"content-type":"application/octet-stream"} : {})});
+        response = {status:wire.status,data:wire.headers["content-type"] === "application/octet-stream" ? wire.bytes : wire.bytes.length ? wire.json() : undefined};
+      } else {
+        try { response = fixture.request(method,path,body,{...local,...headers}); }
+        catch (error) {
+          if (!error.problem) throw error;
+          response = {status:error.problem.status,data:error.problem};
+        }
+      }
+      assert.equal(response.status,status,`${method} ${path}`);
+      return response.data;
+    }
+    const login = "/v1/host/transactions/login", logout = "/v1/host/transactions/logout", account = "/v1/host/account";
+    const memories = "/v1/memories", diary = "/v1/diary", spaces = "/v1/spaces", stats = "/v1/stats";
+    const backups = "/v1/backups/", switchAccount = "/preview/account", challengePath = "/preview/owner-challenge";
+    const handshake = "/v1/auth/handshake", scope = {scopes:["stats:read"]};
+    const issue = async()=>proofHeaders((await call("POST",challengePath,{})).challenge);
+    const exchange = async proof=>({authorization:"Bearer " + (await call("POST",handshake,scope,200,proof)).access_token});
+    const active = async()=>(await call("GET","/v1/health")).active_space_id;
+    const privateSpace = await call("POST",spaces,{name:"Private Studio fixture"},201);
+    const spacePath = spaces + "/" + privateSpace.id, query = "?space_id=" + privateSpace.id;
+    await call("PATCH",spacePath,{active:true});
+    assert.equal(await active(),privateSpace.id);
+    const content = "synthetic private fixture marker";
+    const note = await call("POST",memories,{content},201);
+    const record = memories + "/" + note.id;
+    const entry = await call("POST",diary,{date:"2026-11-23",content});
+    const archive = await call("GET",backups+"export");
+    const split = await call("POST","/v1/organize/split",{memory_id:note.id},202);
+    const operation = "/v1/operations/" + split.operation_id;
+    const studioAuth = await exchange(await issue());
+    const studioProof = await issue();
+    assert.equal((await call("GET",stats,undefined,200,studioAuth)).local_total,1);
+
+    await call("POST",switchAccount,{id:"archive"});
+    assert.equal((await call("GET",account)).account_id,"archive");
+    assert.equal(await active(),"archive");
+    await call("GET",record+query,undefined,404);
+    const usedProof = await issue(), archiveAuth = await exchange(usedProof), pendingProof = await issue();
+    await call("GET",stats,undefined,200,archiveAuth);
+    await call("GET","/v1/grants",undefined,403,archiveAuth);
+    await call("POST",handshake,scope,401,usedProof);
+    await call("POST",logout);
+
+    assert.deepEqual(await call("GET",account),{signed_in:false,account_id:null,transaction_state:"none"});
+    assert.equal(await active(),undefined);
+    assert.deepEqual(await call("GET",spaces),{spaces:[]});
+    assert.deepEqual(await call("GET",memories),{items:[],next_cursor:null});
+    assert.deepEqual(await call("GET",diary),{entries:[]});
+    assert.deepEqual(await call("POST",memories+"/recall",{query:content}),{hits:[]});
+    for (const [method,path,body] of [
+      ["GET",record],["GET",record+query],["GET",memories+query],["GET",memories+"?space_id=studio"],
+      ["POST",memories,{space_id:privateSpace.id,content}], ["PATCH",record,{content:"guest edit"}],
+      ["PATCH",record+query,{content:"guest edit"}],["DELETE",record+query],
+      ["GET",diary+query],["POST",diary,{space_id:privateSpace.id,date:entry.date,content:"guest entry"}],
+      ["POST",memories+"/recall",{space_id:privateSpace.id,query:content}],
+      ["GET",spacePath],["PATCH",spacePath,{active:true,name:"Guest rename"}],["DELETE",spacePath],
+      ["GET",spacePath+"/members"],["POST",spacePath+"/members",{identifier:"Guest fixture",role:"viewer"}],
+      ["GET",backups+"export"+query],["POST",backups+"import"+query,archive],["GET",operation],["DELETE",operation]
+    ]) await call(method,path,body,404);
+    if (http) await call("GET",operation+"/events",undefined,404);
+    for (const [method,path,body] of [
+      ["POST",memories,{content}],["POST",diary,{date:entry.date,content}],
+      ["GET",backups+"export"],["POST",backups+"import",archive]
+    ]) assert.equal((await call(method,path,body,409)).code,"no_active_space");
+    assert.deepEqual((await call("GET","/preview/library")).operations,[]);
+    assert.deepEqual(await call("GET","/v1/sync/status"),{state:"idle",pending_outbox:0,last_synced_at:null});
+    await call("POST","/v1/sync/trigger",undefined,401);
+    await call("POST",switchAccount,{id:"studio"},401);
+    await call("POST",challengePath,{},401);
+    await call("POST",handshake,scope,401,pendingProof);
+    for (const auth of [{},studioAuth,archiveAuth]) await call("GET",stats,undefined,401,auth);
+
+    const demo = await call("POST",spaces,{name:"Guest demo fixture"},201);
+    assert.equal(await active(),demo.id);
+    assert.deepEqual((await call("GET",spaces)).spaces.map(space=>space.id),[demo.id]);
+    await call("POST",backups+"import",archive,400);
+    await call("POST",login,{mode:"offline_keygen"});
+    assert.deepEqual(await call("GET",account),{signed_in:true,account_id:"studio",transaction_state:"none"});
+    assert.equal(await active(),privateSpace.id);
+    assert.deepEqual(await call("GET",record),note);
+    assert.deepEqual((await call("GET",memories)).items,[note]);
+    assert.deepEqual((await call("GET",diary)).entries,[entry]);
+    assert.equal((await call("GET",spacePath)).name,privateSpace.name);
+    assert.equal((await call("GET",spacePath+"/members")).members.length,1);
+    assert.equal((await call("DELETE",operation,undefined,202)).state,"cancelled");
+    await call("GET",spaces+"/"+demo.id,undefined,404);
+    await call("POST",handshake,scope,401,studioProof);
+    await call("GET",stats,undefined,401,studioAuth);
+    assert.equal((await call("GET",stats,undefined,200,await exchange(await issue()))).local_total,1);
+    await call("POST",switchAccount,{id:"archive"});
+    assert.equal(await active(),"archive");
+    await call("GET",stats,undefined,401,archiveAuth);
+  });
+}
 test("grant revocation retains metadata and conflicts retain exact decimal revisions",()=>{
   const f = globalThis.RespireFixture.create("multi-account"), auth = owner(f);
   const call = (method,path)=>f.request(method,path,{},auth);
@@ -206,6 +323,7 @@ test("HTTP byte export and restore change synthetic state after asynchronous com
     assert.equal(op.status,202);
     await h.call("GET","/v1/operations/"+op.json().operation_id+"/events");
     assert.deepEqual((await h.call("GET","/v1/memories/note-1")).json(),original);
+    assert.equal((await h.call("POST","/v1/host/transactions/login?scenario=empty",{mode:"offline_keygen"})).status,200);
     const foreign = await h.call("POST","/v1/backups/import?scenario=empty",archive.bytes,{...local,"content-type":"application/octet-stream"});
     assert.equal(foreign.status,400);
   } finally { h.close(); }

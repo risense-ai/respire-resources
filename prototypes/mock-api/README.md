@@ -40,7 +40,11 @@ No contract copy or root dependency manifest is needed.
 
 Memory deletion retains synthetic tombstones. The seeded profiles share the
 seeded spaces and each remembers its own active space. New spaces belong to
-the creating profile. Spaces isolate memories,
+the creating profile or to the signed-out guest. The empty scenario starts
+with a separate, empty Offline demo space for the guest. Demo data stays with
+the guest when the setup wizard signs in to Studio. Logout returns to the
+guest's own workspace, if any. Signing in restores Studio's saved selection.
+Profile switching is available after sign-in. Spaces isolate memories,
 member invitations, grants, diary entries and query aggregates. Split and
 deepen operations modify fixture state on completion. Query logs contain
 counts only; reviews and conflicts contain metadata, never credentials.
