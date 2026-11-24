@@ -1,0 +1,124 @@
+{
+  "schema": 1,
+  "synthetic": true,
+  "source_repo": "risense-ai/respire-runtime",
+  "source_commit": "1d8a1bda4b6c43ec4df0dad8f4578908e13ba322",
+  "vectors": [
+    {
+      "version": 1,
+      "domain": "onememory",
+      "kdf_salt": "101112131415161718191a1b1c1d1e1f",
+      "urk_nonce": "303132333435363738393a3b",
+      "wrapped_urk": "cac9735556d024fa98d9d4df5e0233e3980c14fc41f6da95407d79fd03d034e40d057cffe84e1f67df6cdd0a32fe6d57",
+      "unlock_factor": "synthetic-vault-fixture-1",
+      "account_secret": "909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeaf",
+      "expected_urk_hex": "707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f",
+      "data": {
+        "nonce_hex": "505152535455565758595a5b",
+        "ciphertext": "f182b73dc0a072523fd383d640af7924a0de1cbebd58b0556ef7a6aa16b77480778bb3a9b39c9cf60e633cdcc9aaab2cb0129f0091479f0c3e644e",
+        "expected_utf8": "synthetic legacy vault library onememory v1"
+      }
+    },
+    {
+      "version": 1,
+      "domain": "rsrs",
+      "kdf_salt": "1112131415161718191a1b1c1d1e1f20",
+      "urk_nonce": "3132333435363738393a3b3c",
+      "wrapped_urk": "rsrs:v1:9566d8e2ebb390ca81e810e2b3e85754dbe0c91a8336ebb674e4b366b3b379bc62def5491d54b659d7029c2dcacab8d7",
+      "unlock_factor": "synthetic-vault-fixture-1",
+      "account_secret": "9192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0",
+      "expected_urk_hex": "7172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f90",
+      "data": {
+        "nonce_hex": "5152535455565758595a5b5c",
+        "ciphertext": "rsrs:v1:a656de955a798ad46abe6b5ccf099d5208536029dc4e9c3db8b6752930811b56acfee92cb861f9d0c24ce0d1a0b548d1894ea71c416f",
+        "expected_utf8": "synthetic legacy vault library rsrs v1"
+      }
+    },
+    {
+      "version": 2,
+      "domain": "onememory",
+      "kdf_salt": "12131415161718191a1b1c1d1e1f2021",
+      "urk_nonce": "32333435363738393a3b3c3d",
+      "wrapped_urk": "65ad9e9245f49cad2d1c44256aaab61041e99d92aa212a848bc2a7297db14c77beee09dad0d7cf5a47b870ebc6f910b5",
+      "unlock_factor": "synthetic-vault-fixture-2",
+      "expected_urk_hex": "72737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f9091",
+      "data": {
+        "nonce_hex": "52535455565758595a5b5c5d",
+        "ciphertext": "0ec681543914df4bc3cd4560676dddaf4e7cff7cc211125792042f30aa9fad03ef83b18fc293c61f626c2e81181bbade2ece0b511a0ccea68a56c7",
+        "expected_utf8": "synthetic legacy vault library onememory v2"
+      }
+    },
+    {
+      "version": 2,
+      "domain": "rsrs",
+      "kdf_salt": "131415161718191a1b1c1d1e1f202122",
+      "urk_nonce": "333435363738393a3b3c3d3e",
+      "wrapped_urk": "rsrs:v1:07073a08f83d8901eeebb70703964149ca4f255c4e81b03ba58fb507ab4e0385541596aa8ec49c27c751a950a74d5207",
+      "unlock_factor": "synthetic-vault-fixture-2",
+      "expected_urk_hex": "737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192",
+      "data": {
+        "nonce_hex": "535455565758595a5b5c5d5e",
+        "ciphertext": "rsrs:v1:0e6b9b98e00b8c5184871230b5b288de5a14e01c75855396df8d022ecd2527552173ad0d97899221f287e13c91f8ec6441e9ed58cfeb",
+        "expected_utf8": "synthetic legacy vault library rsrs v2"
+      }
+    },
+    {
+      "version": 3,
+      "domain": "onememory",
+      "kdf_salt": "1415161718191a1b1c1d1e1f20212223",
+      "urk_nonce": "3435363738393a3b3c3d3e3f",
+      "wrapped_urk": "d46b5557b108c8011e360ec30d6dbc49e6c9187983a21614247d14d6076ae408a182f6c8fa89d682fd9a2a4c9ae640fb",
+      "unlock_factor": "synthetic-vault-fixture-3",
+      "secret_key": "A3-bcbdbe-bfc0c1-c2c3c4-c5c6c7-c8c9ca-cbcccd",
+      "expected_urk_hex": "7475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f90919293",
+      "data": {
+        "nonce_hex": "5455565758595a5b5c5d5e5f",
+        "ciphertext": "896f054c0099528505649721d99aaacde9f78b3d44fa30d6c74561f17e2c41d084bb52833d517fc6096cded15ca6603cca018b9eac7ca54be01d83",
+        "expected_utf8": "synthetic legacy vault library onememory v3"
+      }
+    },
+    {
+      "version": 3,
+      "domain": "rsrs",
+      "kdf_salt": "15161718191a1b1c1d1e1f2021222324",
+      "urk_nonce": "35363738393a3b3c3d3e3f40",
+      "wrapped_urk": "rsrs:v1:8c75390fad692e8b0423d7dd240969fac7628de700f0d94e3e906a056d2cbdb0f8c144060a1b5d3a34fe2f5764b8f723",
+      "unlock_factor": "synthetic-vault-fixture-3",
+      "secret_key": "A3-bdbebf-c0c1c2-c3c4c5-c6c7c8-c9cacb-cccdce",
+      "expected_urk_hex": "75767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f9091929394",
+      "data": {
+        "nonce_hex": "55565758595a5b5c5d5e5f60",
+        "ciphertext": "rsrs:v1:f91623e0bbb35926b81627113034193db46e5b1b41c8dfe2a2a3401849d4bde07642f02f196eec11859b99fc7b4782c89eed5cc03999",
+        "expected_utf8": "synthetic legacy vault library rsrs v3"
+      }
+    },
+    {
+      "version": 4,
+      "domain": "onememory",
+      "kdf_salt": "161718191a1b1c1d1e1f202122232425",
+      "urk_nonce": "363738393a3b3c3d3e3f4041",
+      "wrapped_urk": "63191f0802b17d579dfe3a209ff10d6eab2a74088be6adf08f0ac8551b251c4209af74d52b6528a71855bdcae47b277b",
+      "unlock_factor": "A3-bebfc0-c1c2c3-c4c5c6-c7c8c9-cacbcc-cdcecf",
+      "expected_urk_hex": "767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495",
+      "data": {
+        "nonce_hex": "565758595a5b5c5d5e5f6061",
+        "ciphertext": "7a6ec5fa29c475b3bbaa1a205e31c15bd0f8986855de8a5a21f189b094a382df12e50fd20646c20bbaad892a82c7a4799aceba376d2d8230c460dd",
+        "expected_utf8": "synthetic legacy vault library onememory v4"
+      }
+    },
+    {
+      "version": 4,
+      "domain": "rsrs",
+      "kdf_salt": "1718191a1b1c1d1e1f20212223242526",
+      "urk_nonce": "3738393a3b3c3d3e3f404142",
+      "wrapped_urk": "rsrs:v1:1260ef570204d8971de4bcd5a4ea6bad2465f6054ded2520ae8df573686f2afcca3307c65af357d2f40bf372019f890c",
+      "unlock_factor": "A3-bfc0c1-c2c3c4-c5c6c7-c8c9ca-cbcccd-cecfd0",
+      "expected_urk_hex": "7778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f90919293949596",
+      "data": {
+        "nonce_hex": "5758595a5b5c5d5e5f606162",
+        "ciphertext": "rsrs:v1:469edd86a42705019b1e5be37daa2f592ca1e62b3fa24d92c76eccbcf68876526799974c83bdb7ca12185c41098e6ee2808f80b4a00e",
+        "expected_utf8": "synthetic legacy vault library rsrs v4"
+      }
+    }
+  ]
+}
