@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 
 import { isTrustedEvidenceAuthor, isTrustedVerdictAuthor, loadAgentsConfig } from "./lib/agents-config.mjs";
 import { classifyCard, parseCardMetadata } from "./lib/cards.mjs";
-import { hasTrustedEvidence } from "./lib/lifecycle.mjs";
+import { cmdEvidenceRegister, hasTrustedEvidence, matchCompletionCard } from "./lib/lifecycle.mjs";
 import { getLatestVerdict, matchLinkedCard, parsePrRef } from "./lib/pr-review.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -140,6 +140,63 @@ test("matchLinkedCard resolves cross-repo ref, local ref, and CARD-XXX", () => {
     matchLinkedCard({ title: "CARD-002 audit", body: "", head: { ref: "feat/card-002" } }, "risense-ai/respire-core", byRef, byId),
     card
   );
+});
+
+test("evidence registration ignores #20 prerequisite but closes the explicit #19 delivery", () => {
+  const repo = "risense-ai/respire";
+  const card = makeCard({ ref: repo + "#5", repo, number: 5, labels: new Set(["agent:in-progress"]),
+    meta: { id: "CARD-008", change: "003", milestone: "M3", depends_on: [] } });
+  const byRef = new Map([[card.ref, card]]);
+  const byId = new Map([[card.meta.id, card]]);
+  const sha = "b8e791a190c3c2d9db7590fe300aea4275ff7e96";
+  const runtime = {
+    merge_commit_sha: sha,
+    number: 20, title: "feat(runtime): add scoped startup control for Client2",
+    body: "Part of #5\n\nRuntime-only prerequisite for CARD-008.\n\nThis PR does not close #5, waive compatibility checks, or expose unimplemented model removal.",
+    head: { ref: "feat/card-008-runtime-authority" }, base: { ref: "main", repo: { full_name: repo } },
+    html_url: "https://github.com/risense-ai/respire/pull/20",
+    merged_at: "2026-11-24T19:56:54Z",
+  };
+  assert.equal(matchLinkedCard(runtime, repo, byRef, byId), card, "review association must remain broad");
+  const completed = { ...runtime, number: 19, title: "Import Client2", body: "Closes #5\n\nImports Client2.",
+    html_url: "https://github.com/risense-ai/respire/pull/19" };
+  const calls = [];
+  const exec = (pr, commit = pr.merge_commit_sha) => cmdEvidenceRegister({
+    root: ROOT,
+    fetchAllCards: () => ({ byRef, byId }),
+    cmdSync: () => calls.push(["sync"]),
+    gh: (args) => {
+      if (args[0] === "api" && args[1].endsWith("/pulls/" + pr.number)) return JSON.stringify(pr);
+      if (args[0] === "api" && args.includes("--paginate")) return "[]";
+      calls.push(args);
+      return "";
+    },
+  }, ["--repo", repo, "--sha", commit, "--pr", String(pr.number)]);
+  exec(runtime);
+  assert.deepEqual(calls, [], "prerequisite must not post, close, or unlock");
+  exec(completed, "f".repeat(40));
+  assert.deepEqual(calls, [], "a different SHA must not credit this merge");
+  exec(completed);
+  assert.deepEqual(calls.map((args) => args.slice(0, 3)),
+    [["issue", "comment", "5"], ["issue", "edit", "5"], ["issue", "close", "5"], ["sync"]]);
+  assert.match(calls[0].at(-1), /pull\/19/);
+});
+
+test("completion declaration is unambiguous and not prose, quotes, or documentation", () => {
+  const repo = "risense-ai/respire";
+  const card = makeCard({ ref: repo + "#5" });
+  const byRef = new Map([[card.ref, card]]);
+  const match = (body) => matchCompletionCard({ title: "Closes #5", body, head: { ref: "card-008" } }, repo, byRef);
+  for (const body of [
+    "", "This PR does not close #5", "> Closes #5", "    Closes #5",
+    "<!-- template\nCloses #5\n-->", "\x60\x60\x60md\nCloses #5\n\x60\x60\x60", "~~~\nCloses #5\n~~~",
+    "<pre>\nCloses #5\n</pre>", "<details>\n<summary>Example</summary>\nCloses #5\n</details>",
+    "Some template paragraph\nCloses #5", "Closes #5\nCloses #6", "Closes #5\n\nFixes #6, fixes #7",
+    "Closes another/repo#5", "Closes #55",
+  ]) assert.equal(match(body), null, body);
+  assert.equal(match("Closes #5\n\nThis PR implements CARD-008."), card);
+  assert.equal(match("Resolves risense-ai/respire#5."), card);
+  assert.equal(matchCompletionCard({ body: "Fixes risense-ai/respire#5" }, "risense-ai/respire-resources", byRef), card);
 });
 
 test("hasTrustedEvidence enforces SHA match and trusted author allowlist", () => {

@@ -31,6 +31,8 @@
 
 ---
 
+A PR that completes a card must put a single directive such as `Closes #5` or `Fixes risense-ai/respire-resources#6` on the first body line, followed by a blank line before any explanation. Do not include other closing directives. Use `Part of #5` for prerequisite PRs, and avoid using closing keywords in prose (including negated examples). Review association may also use card names or branch names; automated completion never does.
+
 ## 3. Anti-Flake & Anti-Regression Discipline
 
 1. **No skipped/relaxed assertions**: Failing tests MUST NOT be muted or relaxed to make CI green; real environment gaps require explicit `UNTESTED` reporting by the Verifier.

@@ -2,7 +2,6 @@
 import fs from "node:fs";
 import path from "node:path";
 import { isTrustedEvidenceAuthor, loadAgentsConfig } from "./agents-config.mjs";
-import { matchLinkedCard } from "./pr-review.mjs";
 
 const RELEASE_COMPONENTS = new Set(["runtime", "cli", "client2"]);
 const GREEN_CONCLUSIONS = new Set(["success", "neutral", "skipped"]);
@@ -33,12 +32,14 @@ function readFlag(args, flagName) {
 }
 
 function listMergedPrsForCommit(gh, repo, sha, explicitPrNum) {
+  const isExactMerge = (pr) => Boolean(pr.merged_at) && pr.base?.ref === "main"
+    && pr.merge_commit_sha?.toLowerCase() === sha.toLowerCase();
   if (explicitPrNum) {
     const pr = JSON.parse(gh(["api", `repos/${repo}/pulls/${explicitPrNum}`]));
-    return pr.merged_at && pr.base?.ref === "main" ? [pr] : [];
+    return isExactMerge(pr) ? [pr] : [];
   }
   const pulls = JSON.parse(gh(["api", `repos/${repo}/commits/${sha}/pulls`]));
-  return pulls.filter((pr) => Boolean(pr.merged_at) && pr.base?.ref === "main");
+  return pulls.filter(isExactMerge);
 }
 
 function registerCardEvidence(gh, card, pr, sha, runId, agentsCfg, dryRun) {
@@ -90,6 +91,22 @@ function registerCardEvidence(gh, card, pr, sha, runId, agentsCfg, dryRun) {
   }
 }
 
+/** Completion requires one explicit directive as the first top-level PR body paragraph. */
+export function matchCompletionCard(pr, repo, byRef) {
+  const lines = (pr.body || "").split(/\r?\n/);
+  while (lines.length && !lines[0].trim()) lines.shift();
+  const closing = "(?:close[sd]?|fix(?:es|ed)?|resolve[sd]?)";
+  const first = lines[0]?.match(new RegExp("^" + closing + ":?\\s+((?:[\\w.-]+/[\\w.-]+)?#[1-9]\\d*)\\.?[ \\t]*$", "i"));
+  if (!first || (lines[1] || "").trim()) return null;
+  // Be conservative about additional closing directives, including ambiguous lists.
+  // Prose, titles, branch names, and everything nested under the leading block
+  // are never accepted as the completion directive.
+  const additional = new RegExp("^\\s*" + closing + ":?\\s+(?:[\\w.-]+/[\\w.-]+)?#", "i");
+  if (lines.slice(2).some((line) => additional.test(line))) return null;
+  const ref = first[1].toLowerCase();
+  return byRef.get(ref.startsWith("#") ? `${repo.toLowerCase()}${ref}` : ref) || null;
+}
+
 /** Register immutable post-merge Bot Evidence, close linked Issues, and refresh DAG/Project #1. */
 export function cmdEvidenceRegister({ gh, root, fetchAllCards, cmdSync }, args) {
   const repo = readFlag(args, "--repo");
@@ -112,12 +129,12 @@ export function cmdEvidenceRegister({ gh, root, fetchAllCards, cmdSync }, args) 
     return;
   }
 
-  const { byRef, byId } = fetchAllCards();
+  const { byRef } = fetchAllCards();
   let registered = 0;
   for (const pr of prs) {
-    const card = matchLinkedCard(pr, repo, byRef, byId);
+    const card = matchCompletionCard(pr, repo, byRef);
     if (!card) {
-      console.log(`Merged PR ${repo}#${pr.number} has no linked <!-- respire-card --> Issue; skipping.`);
+      console.log(`Merged PR ${repo}#${pr.number} has no single explicit closing declaration for a canonical card; skipping.`);
       continue;
     }
     if (registerCardEvidence(gh, card, pr, sha, runId, agentsCfg, dryRun)) registered += 1;
