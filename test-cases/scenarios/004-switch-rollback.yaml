@@ -1,0 +1,124 @@
+{
+  "id": "E2E-004",
+  "title": "A failed switch preserves previous active assets and recall",
+  "mock": "switch-rollback-error",
+  "inputs": [
+    "rollbackModel"
+  ],
+  "mockInputs": {
+    "rollbackModel": "archive-small"
+  },
+  "steps": [
+    {
+      "name": "Capture active assets",
+      "request": {
+        "method": "GET",
+        "path": "/v1/models/active-assets"
+      },
+      "expect": {
+        "status": 200,
+        "different": {
+          "active_model_id": "${rollbackModel}"
+        }
+      },
+      "save": {
+        "before": "$"
+      }
+    },
+    {
+      "name": "Seed rollback recall marker",
+      "request": {
+        "method": "POST",
+        "path": "/v1/memories",
+        "body": {
+          "content": "card018-rollback-marker"
+        }
+      },
+      "expect": {
+        "status": 201
+      },
+      "save": {
+        "note": "id"
+      }
+    },
+    {
+      "name": "Accept switch to the prepared failure target",
+      "request": {
+        "method": "POST",
+        "path": "/v1/models/switch",
+        "body": {
+          "model_id": "${rollbackModel}",
+          "engine": "cpu"
+        }
+      },
+      "expect": {
+        "status": 202,
+        "oneOf": {
+          "status": [
+            "pending",
+            "running"
+          ]
+        }
+      },
+      "save": {
+        "operation": "operation_id"
+      }
+    },
+    {
+      "name": "Connect to switch stream",
+      "subscribe": {
+        "stream": "rollbackEvents",
+        "path": "/v1/operations/${operation}/events"
+      }
+    },
+    {
+      "name": "Observe typed rollback failure",
+      "event": {
+        "stream": "rollbackEvents",
+        "name": "failed"
+      },
+      "expect": {
+        "equal": {
+          "state": "failed",
+          "operation_id": "${operation}"
+        },
+        "present": [
+          "error.type",
+          "error.title",
+          "error.status"
+        ]
+      }
+    },
+    {
+      "name": "Previous active assets are identical",
+      "request": {
+        "method": "GET",
+        "path": "/v1/models/active-assets"
+      },
+      "expect": {
+        "status": 200,
+        "equal": {
+          "$": "${before}"
+        }
+      }
+    },
+    {
+      "name": "Previous store remains searchable",
+      "request": {
+        "method": "POST",
+        "path": "/v1/memories/recall",
+        "body": {
+          "query": "card018-rollback-marker"
+        }
+      },
+      "expect": {
+        "status": 200,
+        "includes": {
+          "hits.*.memory.id": [
+            "${note}"
+          ]
+        }
+      }
+    }
+  ]
+}
