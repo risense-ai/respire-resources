@@ -3,7 +3,7 @@ import {once} from "node:events";
 import {stat} from "node:fs/promises";
 import {isAbsolute} from "node:path";
 import {createInterface} from "node:readline";
-import {ownedProcess, withCleanup} from "../targets.mjs";
+import {canonicalMcpEnv, ownedProcess, withCleanup} from "../targets.mjs";
 import {exactBytes, minimumBytes, payload, wire} from "./transport.mjs";
 
 const protocolVersion = "2025-03-26";
@@ -31,7 +31,9 @@ function unwrap(result, command) {
   return envelope;
 }
 
-export async function mcpRoundTrip(binary, {env, root}) {
+export async function mcpRoundTrip(binary, runtime, locale = "zh") {
+  const {root} = runtime;
+  const env = await canonicalMcpEnv(runtime);
   assert(isAbsolute(binary) && (await stat(binary)).isFile(), "Supply an absolute compiled CLI executable path");
   const timeout = AbortSignal.timeout(45_000);
   const runner = ownedProcess(binary, ["--client-only", "mcp"], {
@@ -64,25 +66,34 @@ export async function mcpRoundTrip(binary, {env, root}) {
     assert(Object.hasOwn(init.capabilities, "tools"), "MCP tools capability missing");
     await send(frame(undefined, "notifications/initialized"));
     const {tools} = await request("tools/list");
-    for (const name of ["memory_remember", "memory_recall"]) {
+    for (const name of ["memory_remember", "memory_recall", "memory_show"]) {
       assert(tools.some(tool => tool.name === name), "MCP tool missing: " + name);
     }
-    const note = payload("mcp");
-    const remember = {name: "memory_remember", arguments: {...note, force: true, importance: "trivial"}};
+    const note = payload("mcp", locale);
+    const remember = {name: "memory_remember", arguments: {...note, force: true, importance: "important"}};
     const bytes = frame(nextId + 1, "tools/call", remember).length - 1;
     const stored = unwrap(await request("tools/call", remember, minimumBytes), "remember");
     const id = stored.summary.id;
     assert(typeof id === "string" && id, "Missing stored MCP memory ID");
+
+    const shown = unwrap(await request("tools/call", {name: "memory_show", arguments: {id}}), "show");
+    assert.equal(shown.details.entry.id, id, "Show returned a different MCP memory ID");
+    exactBytes(shown.details.entry.content, note.content);
 
     const recalled = unwrap(await request("tools/call", {
       name: "memory_recall", arguments: {query: note.title, limit: 10, related: false}
     }), "recall");
     const hit = recalled.details.find(({entry}) => entry.id === id);
     assert(hit, "Recall did not return the stored MCP memory ID");
-    exactBytes(hit.entry.content, note.content);
     child.stdin.end();
     const result = await runner.closed;
     assert(!timeout.aborted && result.code === 0, "MCP did not exit cleanly");
+    console.log("VERIFIED MCP memory_show full UTF-8 locale=" + locale +
+      " bytes=" + Buffer.byteLength(note.content, "utf8") + "; recall stored ID matched; clean CLI exit");
+    assert.equal(typeof hit.entry.content, "string", "MCP recall content must be a string");
+    assert.equal(Buffer.byteLength(hit.entry.content, "utf8"), Buffer.byteLength(note.content, "utf8"),
+      "MCP recall UTF-8 length mismatch; truncation semantics UNCONFIRMED; strict acceptance failed");
+    exactBytes(hit.entry.content, note.content);
     return bytes;
   }, async () => {
     timeout.removeEventListener("abort", stopOnTimeout);

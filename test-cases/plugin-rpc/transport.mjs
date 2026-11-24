@@ -8,9 +8,10 @@ export function wire(value) {
   return Buffer.from(JSON.stringify(value), "utf8");
 }
 
-export function payload(channel) {
-  const title = "card018-utf8-" + channel;
-  const entry = {index: 0, text: fixture.segment};
+export function payload(channel, locale = "zh") {
+  assert(["en", "zh"].includes(locale), "Unsupported transport locale");
+  const title = "card018-utf8-" + channel + "-" + locale;
+  const entry = {index: 0, text: locale === "en" ? fixture.englishSegment : fixture.segment};
   const content = JSON.stringify({
     marker: title,
     notebook: {entries: Array.from({length: 1500}, (_, index) => ({...entry, index}))},
@@ -27,8 +28,8 @@ export function exactBytes(actual, expected) {
   assert(actualBytes.equals(expectedBytes), "UTF-8 bytes changed");
 }
 
-export async function httpRoundTrip(target) {
-  const note = payload("http");
+export async function httpRoundTrip(target, locale = "zh") {
+  const note = payload("http", locale);
   const body = {...note, tags: ["card018", "utf8"]};
   const bytes = wire(body).length;
   assert(bytes > minimumBytes, "HTTP body must exceed 100 KiB");
