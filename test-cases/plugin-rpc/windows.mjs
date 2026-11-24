@@ -5,7 +5,8 @@ import {httpBurst, httpRoundTrip} from "./transport.mjs";
 import {mcpRoundTrip} from "./mcp.mjs";
 
 const {values} = parseArgs({options: {
-  "runtime-bin": {type: "string"}, "cli-bin": {type: "string"}, "profile-fixture": {type: "string"}
+  "runtime-bin": {type: "string"}, "cli-bin": {type: "string"}, "profile-fixture": {type: "string"},
+  verify: {type: "boolean"}
 }});
 const runtimeBin = values["runtime-bin"];
 const cliBin = values["cli-bin"];
@@ -13,6 +14,7 @@ const profile = values["profile-fixture"];
 
 if (process.platform !== "win32" || !runtimeBin || !cliBin || !profile) {
   console.log("SKIP NATIVE WINDOWS HTTP/MCP — requires native Windows, compiled Runtime and CLI, and a sanitized offline profile fixture");
+  if (values.verify) process.exitCode = 1;
 } else {
   await withRuntime(runtimeBin, {profile}, async runtime => {
     const health = await runtime.target.request({method: "GET", path: "/v1/health", public: true});

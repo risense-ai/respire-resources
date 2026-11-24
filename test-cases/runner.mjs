@@ -180,12 +180,14 @@ export async function loadScenarios(directory = here) {
 export async function main({legacyOnly = false} = {}) {
   const {values} = parseArgs({options: {
     "runtime-bin": {type: "string"}, "cli-bin": {type: "string"},
+    verify: {type: "boolean"},
     ...(legacyOnly ? {"profile-fixture": {type: "string"}, preflight: {type: "boolean"},
       "released-old": {type: "boolean"}} : {
       mock: {type: "boolean"}, "runtime-fixtures": {type: "string"}
     })
   }});
   const {"runtime-bin": runtimeBin, "cli-bin": cliBin, "runtime-fixtures": manifest, "released-old": releasedOld} = values;
+  assert(!(values.verify && values.preflight), "Verification cannot use preflight (no suites execute)");
   assert(!releasedOld || (runtimeBin && cliBin && values["profile-fixture"]),
     "Released-old baseline requires --runtime-bin, --cli-bin and --profile-fixture");
   assert(!(values.mock && (runtimeBin || cliBin)), "Choose one target mode");
@@ -203,6 +205,8 @@ export async function main({legacyOnly = false} = {}) {
   }
   const fixtures = manifest ? JSON.parse(await readFile(manifest, "utf8")) : {};
   let failures = 0;
+  let passed = 0;
+  let skipped = 0;
   for (const scenario of scenarios) {
     const legacy = Boolean(scenario.target);
     const cli = scenario.target === "cli";
@@ -219,6 +223,8 @@ export async function main({legacyOnly = false} = {}) {
       }
     }
     if (missing.length) {
+      skipped++;
+      if (values.verify && !(values.mock && legacy)) failures++;
       console.log("SKIP " + label + " (requires " + missing.join(", ") + ")");
       continue;
     }
@@ -231,11 +237,14 @@ export async function main({legacyOnly = false} = {}) {
       else await withRuntime(runtimeBin, fixture, runtime => runScenario(scenario,
         cli ? cliTarget(cliBin, runtime) : runtime.target, fixture?.inputs), {releasedOld});
       console.log("PASS " + label);
+      passed++;
     } catch (error) {
       failures++;
       console.error("FAIL " + label + " — " + error.message);
     }
   }
+  if (values.verify && !passed) failures++;
+  console.log(`SUMMARY passed=${passed} skipped=${skipped} failures=${failures} preflight=${Boolean(values.preflight)}`);
   process.exitCode = failures ? 1 : 0;
 }
 

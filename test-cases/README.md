@@ -4,6 +4,14 @@ This suite implements the offline part of CARD-018 and provides entry points for
 compiled acceptance. Each result names its target. A skipped check contributes
 no acceptance evidence.
 
+Add `--verify` to the scenario runner, legacy smoke, or Windows transport command
+when execution is required. Missing prerequisites then fail instead of allowing
+required cases to skip successfully. In `--mock --verify`, only the five mock
+scenarios are required; the two compiled-only legacy cases remain optional.
+Compiled scenario verification requires all seven cases and their fixtures.
+Legacy verification requires both legacy cases. Preflight cannot verify behavior.
+Without `--verify`, prerequisite discovery retains its optional skip behavior.
+
 ## Offline commands
 
 Run from the Resources root with Node.js 22 or later.
@@ -155,6 +163,17 @@ returns 202, then delivers a terminal `cancelled` SSE frame.
 The Quick Panel has a dedicated viewport, and the desktop cases
 check the root font at two viewport sizes. The suite also checks overflow,
 clipped controls, icon alignment, invalid rendered values, and browser errors.
+Before measurement, each screen must finish initialization and show its own
+loaded content. Quick Panel performs a synthetic recall to populate its results.
+Recall receives the valid synthetic query `field` before its initial health
+response releases setup; Quick Panel uses the same query. This verifies loaded
+search results, not the gallery's empty-query initial state (which the fixture
+rejects with `invalid_query`). No production behavior is changed here.
+Models layout uses the stable `rich-1k` seed; cancellation uses its controlled
+running stream. An application error notice fails validation even without a
+console error. Two negative checks inject a failing health capability response
+and require validation to reject initialization. The launcher requires all 38
+Mock Render checks (the original 36 plus two negative checks) to pass without skips.
 
 Set `RESPIRE_E2E_CLIENT2_FIXTURE` to an absolute directory holding a compiled
 web build with index.html and acceptance.json. The latter has a `catalogs`
@@ -162,6 +181,15 @@ object with the actual en and zh string catalogs and a `screens` object
 keyed by the 16 IDs in the localized fixture. Each entry supplies an
 origin-relative `path` and the expected `en` and `zh` level-one headings.
 Supply the required translation keys from the application in `requiredKeys`.
+Each screen must also provide `ready.en` and `ready.zh` objects with CSS `selector`
+and nonempty `text` identifying application-specific loaded content, for example
+`"ready":{"en":{"selector":"[data-testid=model-row]","text":"Active"},"zh":{"selector":"[data-testid=model-row]","text":"..."}}`.
+Choose content rendered after data loading, not a static heading or placeholder.
+The manifest must supply `errorSelector` matching application error notices only.
+The suite waits for loaded content or that error selector, then rejects errors.
+Compiled mode requires all 32 layout checks; only the six gallery-specific SSE
+and synthetic failure checks are skipped. Compiled fixtures without these
+readiness and error declarations fail rather than measuring an unloaded shell.
 The build must support locale selection through `?locale=en` or `?locale=zh`,
 expose a main landmark, and use same-origin Mock Runtime requests. In this mode
 the suite reads the compiled output and leaves its translations untouched.

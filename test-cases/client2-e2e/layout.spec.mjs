@@ -25,9 +25,40 @@ if (compiled) {
       assert(typeof entry[locale] === "string" && entry[locale].trim(), "Missing heading: " + name + " " + locale);
     }
     assert.notEqual(entry.en, entry.zh, "Expected localized headings: " + name);
+    for (const locale of ["en", "zh"]) {
+      assert(entry.ready?.[locale]?.selector && entry.ready[locale].text?.trim(),
+        "Supply application-specific loaded UI selector and text: " + name + " " + locale);
+    }
   }
+  assert(manifest.errorSelector?.trim(), "Supply the application error notice selector");
 }
 const mode = compiled ? "COMPILED CLIENT2 WEBUI + MOCK RUNTIME" : "MOCK RENDER";
+const loaded = {
+  wizard: ["#results", "Ready to create a local profile."],
+  overview: ["#results details", null], workspace: ["#results details", null],
+  recall: ["#results details", null], quickpanel: ["#results details", null],
+  diary: ["#results small", "Saved journal entry"],
+  organize: ["#results", "Preview the proposed moves"],
+  models: ["#results .row .pill", "Active"], storage: ["#results .row .pill", "Active"],
+  "session-import": ["#results input:checked", null], stats: ["#results meter", null],
+  accounts: ["#spaces .row", null], grants: ["#results", "Enable the synthetic owner session"],
+  "space-members": ["#results .row", null], injection: ["#results", ".github/copilot-instructions.md"],
+  settings: ["#results", "Current mode:"]
+};
+
+async function assertLoaded(page, name, locale) {
+  const errorSelector = compiled ? manifest.errorSelector : "#notice[data-error]";
+  const [selector, text] = compiled
+    ? [manifest.screens[name].ready[locale].selector, manifest.screens[name].ready[locale].text]
+    : loaded[name];
+  await page.waitForFunction(({selector, text, errorSelector}) =>
+    document.querySelector(errorSelector) || [...document.querySelectorAll(selector)].some(node =>
+      node.getClientRects().length && (!text || node.textContent.includes(text))),
+  {selector, text, errorSelector});
+  await expect(page.locator(errorSelector), "Application initialization must not report an error").toHaveCount(0);
+  const content = page.locator(selector);
+  await expect(text ? content.filter({hasText: text}).first() : content.first()).toBeVisible();
+}
 
 let app;
 let base;
@@ -59,7 +90,7 @@ async function routeBuild(route, url) {
   await route.fulfill({path: candidate});
 }
 
-async function open(page, name, locale, seed, origin = base) {
+async function open(page, name, locale, seed, origin = base, failInit = false) {
   const errors = [];
   page.on("console", message => { if (message.type() === "error") errors.push(message.text()); });
   page.on("pageerror", error => errors.push(error.message));
@@ -68,9 +99,15 @@ async function open(page, name, locale, seed, origin = base) {
     if (url.origin !== origin) {
       errors.push("Unexpected network origin: " + url.origin);
       await route.abort();
+    } else if (failInit && url.pathname === "/v1/health") {
+      await route.fulfill({json: {capabilities: []}});
     } else if (compiled && !url.pathname.startsWith("/v1/") && !url.pathname.startsWith("/preview/")) {
       await routeBuild(route, url);
     } else {
+      // Recall initializes by searching; provide valid synthetic input before health releases setup.
+      if (!compiled && name === "recall" && url.pathname === "/v1/health") {
+        await page.locator("#input").fill("field");
+      }
       await route.continue();
     }
   });
@@ -79,11 +116,21 @@ async function open(page, name, locale, seed, origin = base) {
   const entry = manifest?.screens[name];
   const path = entry?.path ?? "/pages/" + name + ".html";
   const query = new URLSearchParams({locale});
-  if (seed) query.set("scenario", seed);
+  if (seed || name === "models") query.set("scenario", seed ?? "rich-1k");
   await page.goto(origin + path + "?" + query);
   const main = page.getByRole("main");
   const heading = main.getByRole("heading", {level: 1});
   await expect(main).toBeVisible();
+  if (!compiled) {
+    await page.waitForFunction(() => typeof screenReady !== "undefined");
+    if (name !== "models" || seed !== "downloading-sse") await page.evaluate(() => screenReady);
+    await expect(page.locator("#notice[data-error]")).toHaveCount(0);
+    if (name === "quickpanel") {
+      await page.locator("#input").fill("field");
+      await page.locator("#search").click();
+    }
+  }
+  await assertLoaded(page, name, locale);
   if (!compiled) {
     await expect(heading).toHaveText(screens.en[name][0]);
     await expect(page.locator("nav a[aria-current=page]")).toHaveText(screens.en[name][1]);
@@ -119,8 +166,19 @@ for (const name of Object.keys(screens.en)) {
       expect(small.fontSize).toBeLessThan(initial.fontSize);
     }
     expect(errors).toEqual([]);
+    await expect(page.locator(compiled ? manifest.errorSelector : "#notice[data-error]")).toHaveCount(0);
   });
 }
+
+test("MOCK RENDER rejects a synthetic failing initialization", async ({page}, info) => {
+  test.skip(Boolean(compiled), "Synthetic initialization targets the gallery only");
+  const errors = [];
+  page.on("pageerror", error => errors.push(error.message));
+  page.on("console", message => { if (message.type() === "error") errors.push(message.text()); });
+  await assert.rejects(open(page, "settings", info.project.name, undefined, base, true), /#notice\[data-error\]/);
+  await expect(page.locator("#notice[data-error]")).toHaveText("Runtime API unavailable.");
+  expect(errors).toEqual([]);
+});
 
 test("MOCK RENDER model progress reconciles after SSE cancellation", async ({page}, info) => {
   test.skip(Boolean(compiled), "Gallery controls belong to Mock Render");
@@ -143,6 +201,7 @@ test("MOCK RENDER model progress reconciles after SSE cancellation", async ({pag
     await expect(state).toHaveText("model download / cancelled / 0%");
     await expect(page.getByRole("status")).toContainText(/cancelled/i);
     await expect(cancel).toBeDisabled();
+    await expect(page.locator("#notice[data-error]")).toHaveCount(0);
     expect(errors).toEqual([]);
   } finally {
     await close(controlled);
@@ -156,5 +215,6 @@ test("MOCK RENDER model selection reconciles after SSE completion", async ({page
   await archive.getByRole("button", {name: "Activate"}).click();
   await expect(page.getByRole("status")).toContainText("Operation completed.");
   await expect(archive.locator(".pill")).toHaveText("Active");
+  await expect(page.locator("#notice[data-error]")).toHaveCount(0);
   expect(errors).toEqual([]);
 });
