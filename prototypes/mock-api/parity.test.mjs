@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {methods,schemas,validate} from "./contract-check.mjs";
-import {harness,local} from "./http-harness.mjs";
+import {harness,local,proofHeaders} from "./http-harness.mjs";
 
-const proof = {"content-type":"application/json","x-respire-handshake-proof":"synthetic-owner-proof-only"};
 const scopes = ["grants:read","grants:revoke","stats:read","query-log:read","reviews:read","sync-conflicts:read"];
 const grant = "00000000-0000-4000-8000-000000000001";
 const cases = [
@@ -29,6 +28,12 @@ const cases = [
   ["GET /v1/memories/{memoryId}/reviews",200], ["GET /v1/sync/conflicts",200],
   ["POST /v1/auth/handshake",200,{scopes}]
 ];
+async function issueProof(h,scenario = "multi-account") {
+  const response = await h.call("POST","/preview/owner-challenge?scenario="+scenario,{});
+  assert.equal(response.status,200,response.text);
+  assert.equal(response.headers["cache-control"],"no-store");
+  return {"content-type":"application/json",...proofHeaders(response.json().challenge)};
+}
 function check(key,response) {
   const operation = methods.get(key);
   const mapping = operation.responses[response.status] ?? operation.responses.default;
@@ -71,11 +76,11 @@ for (const [key,expected,input] of cases) test(key + " maps success and RFC Prob
       headers = {...local,"content-type":"application/octet-stream"};
     }
     if (methods.get(key).scope) {
-      const owner = await h.call("POST","/v1/auth/handshake?scenario=multi-account",{scopes},proof);
+      const owner = await h.call("POST","/v1/auth/handshake?scenario=multi-account",{scopes},await issueProof(h));
       assert.equal(owner.status,200);
       headers = {...local,authorization:"Bearer " + owner.json().access_token};
     }
-    if (template === "/v1/auth/handshake") headers = proof;
+    if (template === "/v1/auth/handshake") headers = await issueProof(h);
     if (methods.get(key).requestSchema && body !== undefined) validate(body,methods.get(key).requestSchema);
     const response = await h.call(method,url,body,headers);
     assert.equal(response.status,expected,response.text);
@@ -124,5 +129,62 @@ test("media, JSON, missing resources and invalid input use contract ProblemDetai
       const response = await h.call(key.split(" ")[0],url,body,headers);
       assert.equal(response.status,status,response.text); check(key,response);
     }
+  } finally { h.close(); }
+});
+test("Recall and Diary enforce JSON types and Gregorian dates",async()=>{
+  const h = harness();
+  const recall = "/v1/memories/recall", diary = "/v1/diary";
+  const search = {query:"field"}, entry = {content:"Leap day"};
+  async function reject(method,url,body,code) {
+    const response = await h.call(method,url,body);
+    assert.equal(response.status,400,response.text);
+    check(method+" "+url.split("?")[0],response);
+    assert.equal(response.json().code,code);
+  }
+  try {
+    for (const top_k of ["4",[4],null,true,4.5,0,101])
+      await reject("POST",recall,{...search,top_k},"invalid_parameter");
+    await reject("POST",recall,{query:2},"invalid_query");
+    await reject("POST",recall,{...search,space_id:["studio"]},"invalid_parameter");
+    for (const date of ["2026-02-29","1900-02-29","2026-04-31","2026-13-01","2026-01-00","2026-2-03",""]) {
+      await reject("GET",diary+"?date="+date,undefined,"invalid_parameter");
+      await reject("POST",diary,{...entry,date},"invalid_entry");
+    }
+    for (const date of [["2024-02-29"],null,20240229])
+      await reject("POST",diary,{...entry,date},"invalid_entry");
+    await reject("POST",diary,{date:"2024-02-29",content:42},"invalid_entry");
+    assert.equal((await h.call("GET",diary)).json().entries.length,1);
+    for (const [body,expected] of [[search,10],[{...search,top_k:4},4]]) {
+      const found = await h.call("POST",recall,body);
+      assert.equal(found.status,200,found.text);
+      check("POST "+recall,found);
+      assert.equal(found.json().hits.length,expected);
+    }
+    for (const date of ["0001-01-01","2000-02-29","2024-02-29"]) {
+      const saved = await h.call("POST",diary,{...entry,date});
+      assert.equal(saved.status,200,saved.text);
+      check("POST "+diary,saved);
+      const loaded = await h.call("GET",diary+"?date="+date);
+      check("GET "+diary,loaded);
+      assert.deepEqual(loaded.json().entries,[saved.json()]);
+    }
+  } finally { h.close(); }
+});
+test("preview challenges and leases stay within their scenario",async()=>{
+  const h = harness();
+  try {
+    const issue = "/preview/owner-challenge", exchange = "/v1/auth/handshake", stats = "/v1/stats";
+    assert.equal((await h.call("POST",issue,{},{"content-type":"application/json"})).status,401);
+    assert.equal((await h.call("POST",issue+"?scenario=empty",{})).status,401);
+    const multi = await issueProof(h), rich = await issueProof(h,"rich-1k");
+    const wrong = await h.call("POST",exchange,{scopes},multi);
+    assert.equal(wrong.status,401);
+    check("POST "+exchange,wrong);
+    const owner = await h.call("POST",exchange+"?scenario=multi-account",{scopes},multi);
+    assert.equal(owner.status,200);
+    assert.equal((await h.call("POST",exchange,{scopes},rich)).status,200);
+    const auth = {authorization:"Bearer "+owner.json().access_token};
+    assert.equal((await h.call("GET",stats,undefined,auth)).status,401);
+    assert.equal((await h.call("GET",stats+"?scenario=multi-account",undefined,auth)).status,200);
   } finally { h.close(); }
 });

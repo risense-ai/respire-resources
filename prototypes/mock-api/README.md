@@ -15,17 +15,18 @@ each scenario in process memory and never opens a user profile.
 
 Health is public. Ordinary fixture routes accept
 `Authorization: Bearer synthetic-preview-only`. Owner metadata routes require
-a separate synthetic scoped lease. Use the explicit owner-session button on
-Grants or Statistics; the browser does not discover a proof automatically.
-The fixture handshake accepts the literal `synthetic-owner-proof-only` once
-per scenario and server lifetime through `X-Respire-Handshake-Proof`.
-It checks scopes, rejects replay and expires leases after 300 seconds.
-Profile/space switches and logout invalidate leases. Restart the server to
-restore the seed and reuse the fixture proof. File previews restart per page.
+a separate synthetic scoped lease. The owner-session button on Grants or
+Statistics issues a fresh challenge through `POST /preview/owner-challenge`
+with the preview bearer and an empty JSON object. Prefix the returned
+`challenge` with `synthetic-owner-proof-` and send it once through
+`X-Respire-Handshake-Proof`. Challenges expire after 30 seconds. The handshake
+checks scopes and issues a 300-second lease for the active account and space.
+Profile and space switches, completed login, and logout invalidate both
+outstanding challenges and leases. Use the button again to reauthorize.
 
 This handshake is **not production authentication evidence**. It performs no
 signing, credential extraction, OS ownership verification or secret access.
-Its literal proof and lease values are deliberately synthetic and must never
+Its deterministic proof and lease values are deliberately synthetic and must never
 be used against a production Runtime. HTTP previews use a monotonic clock;
 direct fixture tests advance a deterministic clock explicitly.
 
@@ -37,7 +38,9 @@ canonical document's current schema syntax; it is not a general YAML or
 JSON Schema implementation. Unsupported mapping syntax fails assertions.
 No contract copy or root dependency manifest is needed.
 
-Memory deletion retains synthetic tombstones. Spaces isolate memories,
+Memory deletion retains synthetic tombstones. The seeded profiles share the
+seeded spaces and each remembers its own active space. New spaces belong to
+the creating profile. Spaces isolate memories,
 member invitations, grants, diary entries and query aggregates. Split and
 deepen operations modify fixture state on completion. Query logs contain
 counts only; reviews and conflicts contain metadata, never credentials.

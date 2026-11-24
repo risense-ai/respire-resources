@@ -3,6 +3,7 @@ import {Readable} from "node:stream";
 import {server} from "./server.mjs";
 
 export const local = {authorization:"Bearer synthetic-preview-only","content-type":"application/json"};
+export const proofHeaders = challenge => ({"x-respire-handshake-proof":"synthetic-owner-proof-" + challenge});
 export function harness(interval = 2) {
   const app = server({interval});
   app.address = ()=>({port:4173});

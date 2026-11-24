@@ -15,7 +15,9 @@ The scenario menu travels with navigation links. On Models, select
 `downloading-sse` to cancel the seeded download, or `switch-rollback-error`
 and activate Archive Small to inspect a failed switch. On Workspace, change
 the view and advance through the collection. Select `multi-account` on
-Accounts to switch between the Studio notebook and Personal archive.
+Accounts to switch profiles. Each profile remembers its active space. The
+Studio notebook and Personal archive are shared seed spaces that can be
+activated independently of the profile.
 
 Workspace supports editing and soft-deleting selected notes. Organize offers
 on-demand suggestions, confirmed splits and reviewed deepen plans. Accounts

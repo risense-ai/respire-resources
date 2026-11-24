@@ -184,6 +184,18 @@ async function setup() {
     });
   }
   if (page === "stats") {
+    let all = [];
+    async function reloadDistribution() {
+      const items = [];
+      let cursor = "0";
+      do {
+        const batch = await api("/v1/memories?limit=200&cursor="+cursor);
+        items.push(...batch.items);
+        cursor = batch.next_cursor;
+      } while (cursor);
+      all = items;
+      draw();
+    }
     bind("authorize",async()=>{
       await authorizeOwner();
       const [stats,log,conflicts] = await Promise.all([ownerApi("/v1/stats"),ownerApi("/v1/query-log?limit=5"),ownerApi("/v1/sync/conflicts")]);
@@ -194,16 +206,8 @@ async function setup() {
         const reviews = await ownerApi("/v1/memories/"+encodeURIComponent(first.id)+"/reviews?limit=5");
         el("audit").innerHTML += '<h3>Recent review history</h3>'+rows(reviews.items.map(r=>html(r.action+" / "+r.happened_at)),"No review events for the first memory.");
       }
-      el("authorize").disabled = true;
+      await reloadDistribution();
     });
-    showMetrics(await light());
-    const all = [];
-    let cursor = "";
-    do {
-      const batch = await api("/v1/memories?limit=200&cursor="+(cursor || "0"));
-      all.push(...batch.items);
-      cursor = batch.next_cursor;
-    } while (cursor);
     function draw() {
       const counts = new Map();
       for (const m of all) {
@@ -213,7 +217,8 @@ async function setup() {
       result(rows([...counts].map(([label,count])=>'<strong>'+html(label)+'</strong><meter max="'+all.length+'" value="'+count+'"></meter><span>'+count+'</span>')));
     }
     bind("mode",draw,"change");
-    return draw();
+    showMetrics(await light());
+    return reloadDistribution();
   }
   if (page === "accounts") {
     bind("sync",async()=>{
@@ -249,7 +254,7 @@ async function setup() {
   }
   if (page === "grants") {
     const draw = async()=>result(rows((await ownerApi("/v1/grants")).items.map(g=>'<strong>'+html(g.label)+'</strong>'+(g.revoked ? '<span class="pill">Revoked</span>' : '<button data-id="'+html(g.id)+'">Revoke grant</button>')),"No grants issued."));
-    bind("authorize",async()=>{await authorizeOwner(); await draw(); el("authorize").disabled = true;});
+    bind("authorize",async()=>{await authorizeOwner(); await draw();});
     el("results").onclick = e=>run(async()=>{
       const button = e.target.closest("button[data-id]");
       if (button && confirm("Revoke this synthetic grant? Shared memories will be retained.")) {

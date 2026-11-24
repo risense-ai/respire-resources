@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import "./fixture.js";
-import {harness,local} from "./http-harness.mjs";
+import {harness,local,proofHeaders} from "./http-harness.mjs";
 import {validate,schemas} from "./contract-check.mjs";
 
 const scopes = ["grants:read","grants:revoke","stats:read","query-log:read","reviews:read","sync-conflicts:read"];
-const proof = {"x-respire-handshake-proof":"synthetic-owner-proof-only"};
 const failure = status => e=>e.problem?.status === status;
+const challenge = f => proofHeaders(f.request("POST","/preview/owner-challenge").data.challenge);
 function owner(f,selected = scopes) {
-  const {data} = f.request("POST","/v1/auth/handshake",{scopes:selected},proof);
+  const {data} = f.request("POST","/v1/auth/handshake",{scopes:selected},challenge(f));
   return {authorization:"Bearer "+data.access_token};
 }
 function finish(f,op) {
@@ -52,7 +52,7 @@ test("all five scenarios replay CRUD, split, reviews, query aggregates and backu
       finish(f,call("POST","/v1/backups/import",archive));
       assert.equal(call("GET","/v1/memories/"+note.id).content,"one two");
       assert.throws(()=>call("POST","/v1/backups/import",new TextEncoder().encode("other data")),failure(400));
-      return {frames,history,log,archive};
+      return {auth,frames,history,log,archive};
     }
     assert.deepEqual(replay(),replay());
   }
@@ -85,23 +85,77 @@ test("spaces isolate notes, members, plans and grants; active switches revoke ow
   assert.throws(()=>call("GET","/v1/memories/"+note.id),failure(404));
 });
 test("owner fixture rejects bearer substitution, replay, bad scopes, expiry and identity changes",()=>{
-  const fresh = ()=>globalThis.RespireFixture.create("rich-1k");
+  const fresh = ()=>globalThis.RespireFixture.create("multi-account");
   const f = fresh();
   assert.throws(()=>f.request("POST","/v1/auth/handshake",{scopes}),failure(401));
-  for (const invalid of [[],["stats:read","stats:read"],["private:key"]])
+  for (const invalid of [[],["stats:read","stats:read"],["private:key"],"stats:read"]) {
+    const proof = challenge(f);
     assert.throws(()=>f.request("POST","/v1/auth/handshake",{scopes:invalid},proof),failure(400));
+    assert.throws(()=>f.request("POST","/v1/auth/handshake",{scopes},proof),failure(401));
+  }
+  const proof = challenge(f);
+  const second = challenge(f);
+  assert.notDeepEqual(proof,second);
+  f.request("POST","/v1/auth/handshake",{scopes},second);
+  f.request("POST","/v1/auth/handshake",{scopes},proof);
+  assert.throws(()=>f.request("POST","/v1/auth/handshake",{scopes},proof),failure(401));
+  const expired = challenge(f);
+  f.advanceTime(30);
+  assert.throws(()=>f.request("POST","/v1/auth/handshake",{scopes},expired),failure(401));
   const auth = owner(f,["stats:read"]);
-  assert.throws(()=>owner(f),failure(401));
   assert.throws(()=>f.request("GET","/v1/grants",{},auth),failure(403));
+  assert.throws(()=>f.request("GET","/v1/stats",{},{authorization:auth.authorization.slice(7)}),failure(401));
   assert.throws(()=>f.request("GET","/v1/stats"),failure(401));
   validate(f.request("GET","/v1/stats",{},auth).data,schemas.LibraryStatsResponse);
   f.advanceTime(300);
   assert.throws(()=>f.request("GET","/v1/stats",{},auth),failure(401));
-  for (const [path,body] of [["/v1/host/transactions/logout",{}],["/preview/account",{id:"studio"}]]) {
-    const other = fresh(), token = owner(other);
-    other.request("POST",path,body);
+  for (const [method,path,body] of [
+    ["POST","/v1/host/transactions/logout",{}],["POST","/preview/account",{id:"archive"}],
+    ["PATCH","/v1/spaces/archive",{active:true}],["POST","/v1/host/transactions/login",{mode:"offline_keygen"}]
+  ]) {
+    const other = fresh(), token = owner(other), pending = challenge(other);
+    other.request(method,path,body);
     assert.throws(()=>other.request("GET","/v1/stats",{},token),failure(401));
+    assert.throws(()=>other.request("POST","/v1/auth/handshake",{scopes},pending),failure(401));
+    if (path.endsWith("logout")) assert.throws(()=>challenge(other),failure(401));
+    else assert.equal(other.request("GET","/v1/stats",{},owner(other)).status,200);
   }
+});
+test("account profiles and owned spaces are independent",()=>{
+  const f = globalThis.RespireFixture.create("multi-account");
+  const call = (method,path,body)=>f.request(method,path,body).data;
+  const accounts = ()=>call("GET","/preview/library").accounts;
+  const identity = ()=>call("GET","/v1/host/account").account_id;
+  const active = ()=>call("GET","/v1/health").active_space_id;
+  const spaceIds = ()=>call("GET","/v1/spaces").spaces.map(s=>s.id);
+  const created = call("POST","/v1/spaces",{name:"Private studio notebook"});
+  assert.deepEqual(accounts(),["studio","archive"]);
+  assert.deepEqual(spaceIds(),["studio","archive",created.id]);
+  assert.throws(()=>call("POST","/preview/account",{id:created.id}),failure(404));
+  call("PATCH","/v1/spaces/"+created.id,{active:true});
+  assert.equal(identity(),"studio");
+  assert.equal(active(),created.id);
+  call("POST","/preview/account",{id:"archive"});
+  assert.equal(identity(),"archive");
+  assert.equal(active(),"archive");
+  assert.deepEqual(spaceIds(),["studio","archive"]);
+  assert.throws(()=>call("GET","/v1/memories?space_id="+created.id),failure(404));
+  assert.throws(()=>call("PATCH","/v1/spaces/"+created.id,{active:true}),failure(404));
+  call("PATCH","/v1/spaces/studio",{active:true});
+  assert.equal(identity(),"archive");
+  assert.equal(active(),"studio");
+  call("POST","/preview/account",{id:"studio"});
+  assert.equal(active(),created.id);
+  call("POST","/preview/account",{id:"archive"});
+  assert.equal(active(),"studio");
+  assert.deepEqual(accounts(),["studio","archive"]);
+
+  const empty = globalThis.RespireFixture.create("empty");
+  empty.request("POST","/v1/spaces",{name:"Offline notebook"});
+  assert.equal(empty.request("GET","/v1/host/account").data.account_id,null);
+  empty.request("POST","/v1/host/transactions/login",{mode:"offline_keygen"});
+  assert.equal(empty.request("GET","/v1/host/account").data.account_id,"studio");
+  assert.deepEqual(empty.request("GET","/preview/library").data.accounts,["studio"]);
 });
 test("grant revocation retains metadata and conflicts retain exact decimal revisions",()=>{
   const f = globalThis.RespireFixture.create("multi-account"), auth = owner(f);

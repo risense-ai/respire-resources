@@ -18,12 +18,21 @@
       problem(400, "invalid_parameter", "Invalid " + field);
     return Number(value);
   }
+  function calendarDate(value) {
+    if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const parsed = new Date(value + "T00:00:00Z");
+    return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0,10) === value;
+  }
   function create(scenario, {now} = {}) {
     if (!scenarios.includes(scenario)) problem(400, "unknown_scenario", "Unknown fixture scenario.");
     const empty = scenario === "empty";
     const multi = scenario === "multi-account";
-    const spaces = [{id:"studio", name:"Studio notebook", role:"owner", active:true}];
-    if (multi) spaces.push({id:"archive", name:"Personal archive", role:"owner", active:false});
+    const profiles = new Map([["studio","studio"]]);
+    if (multi) profiles.set("archive","archive");
+    const spaces = [{id:"studio", name:"Studio notebook", role:"owner"}];
+    if (multi) spaces.push({id:"archive", name:"Personal archive", role:"owner"});
+    // Both seeded profiles can browse and manage the shared fixture spaces.
+    const owners = new Map(spaces.map(s => [s.id,[...profiles.keys()]]));
     const memories = Array.from({length:empty ? 0 : 1000}, (_, i) => ({
       id:"note-" + (i + 1), space_id:multi && i % 2 ? "archive" : "studio",
       title:notes[i % notes.length] + " / " + (i + 1), category:topics[i % topics.length],
@@ -32,6 +41,9 @@
       parent_id:i < 4 ? null : "note-" + (1 + i % 4), tags:["notebook"], created_at:stamp, updated_at:stamp
     }));
     let account = empty ? null : "studio";
+    const profile = () => account ?? "studio";
+    const visibleSpaces = () => spaces.filter(s=>owners.get(s.id).includes(profile()));
+    const activeSpace = () => profiles.get(profile()) ?? visibleSpaces()[0]?.id;
     let transaction = "none";
     const journals = new Map([["studio", empty ? [] : [{id:"day-1", date, content:"Reviewed the field notes and collected open questions for the next session.", updated_at:stamp}]]]);
     let active = models[0].id;
@@ -45,7 +57,8 @@
     const reviews = new Map();
     const scopes = ["grants:read","grants:revoke","stats:read","query-log:read","reviews:read","sync-conflicts:read"];
     const leases = new Map();
-    let proofUsed = false;
+    const challenges = new Map();
+    let challengeSequence = 0;
     let leaseSequence = 0;
     let clock = 0;
     const currentTime = () => now ? now() : clock;
@@ -54,7 +67,7 @@
       {epoch:"fixture-epoch",revision:"9007199254740993",memory_id:"note-1",state:"pending",current_head_revision:"9007199254740994"},
       {epoch:"fixture-epoch",revision:"2",memory_id:"note-3",state:"processed",resolution:"keep_local"}
     ] : [];
-    function invalidate() { leases.clear(); }
+    function invalidate() { leases.clear(); challenges.clear(); }
     function record(item, action) {
       const entries = reviews.get(item.id) ?? [];
       entries.unshift({sequence:String(entries.length + 1),record_revision:"fixture-" + (entries.length + 1),action,happened_at:stamp});
@@ -139,32 +152,36 @@
       const key = method + " " + path;
       const ok = (data, status = 200) => ({status, data});
       if (key === "POST /v1/auth/handshake") {
-        // Synthetic single-use proof only: no signing, OS credential access, or production ownership claim.
-        if (headers["x-respire-handshake-proof"] !== "synthetic-owner-proof-only" || proofUsed || !account)
+        const proof = headers["x-respire-handshake-proof"];
+        const challengeExpires = challenges.get(proof);
+        if (!challenges.delete(proof) || challengeExpires <= currentTime() || !account)
           problem(401,"owner_proof_rejected","Synthetic owner proof rejected.");
         if (Object.keys(body).some(k => k !== "scopes") || !Array.isArray(body.scopes) || !body.scopes.length ||
             body.scopes.length > 6 || new Set(body.scopes).size !== body.scopes.length || body.scopes.some(s => !scopes.includes(s)))
           problem(400,"invalid_scopes","Select distinct supported fixture scopes.");
-        proofUsed = true;
-        const access_token = "synthetic-owner-lease-" + (++leaseSequence);
-        leases.set(access_token,{scopes:[...body.scopes],expires:currentTime() + 300});
+        const access_token = "synthetic-owner-lease-" + scenario + "-" + (++leaseSequence);
+        for (const [token,lease] of leases) if (lease.expires <= currentTime()) leases.delete(token);
+        leases.set(access_token,{account,space:activeSpace(),scopes:[...body.scopes],expires:currentTime() + 300});
         return ok({access_token,token_type:"Bearer",expires_in:300,scopes:[...body.scopes]});
       }
       const required = path === "/v1/grants" ? "grants:read" : /^\/v1\/grants\/[^/]+$/.test(path) ? "grants:revoke" :
         path === "/v1/stats" ? "stats:read" : path === "/v1/query-log" ? "query-log:read" :
         /^\/v1\/memories\/[^/]+\/reviews$/.test(path) ? "reviews:read" : path === "/v1/sync/conflicts" ? "sync-conflicts:read" : null;
+      const lease = required && headers.authorization?.startsWith("Bearer ") ? leases.get(headers.authorization.slice(7)) : undefined;
       if (required) {
-        const lease = leases.get(headers.authorization?.replace(/^Bearer /,""));
-        if (!lease || lease.expires <= currentTime()) problem(401,"owner_token_required","Use an unexpired synthetic owner lease.");
+        if (!lease || lease.account !== account || lease.space !== activeSpace() || lease.expires <= currentTime()) problem(401,"owner_token_required","Use an unexpired synthetic owner lease.");
         if (!lease.scopes.includes(required)) problem(403,"scope_denied","The fixture lease does not allow this operation.");
       } else if (key !== "GET /v1/health" && headers.authorization !== "Bearer synthetic-preview-only") {
         problem(401,"unauthorized","Use the synthetic preview bearer.");
       }
       const spacePath = /^\/v1\/spaces\/([^/]+)(?:\/members)?$/.exec(path);
-      const space = spacePath?.[1] ?? (key === "POST /v1/organize/deepen/apply" && typeof body.plan_id === "string" ? body.plan_id.replace(/^plan-/,"") : undefined) ?? url.searchParams.get("space_id") ?? body.space_id ?? account ?? spaces[0]?.id;
-      if (required && space !== account) problem(403,"library_mismatch","Owner leases are bound to the active library.");
-      const selected = spaces.find(s=>s.id === space);
-      if (!selected && (spacePath || url.searchParams.has("space_id") || body.space_id)) problem(404,"space_not_found","Unknown fixture space.");
+      if ("space_id" in body && typeof body.space_id !== "string") problem(400,"invalid_parameter","Invalid space_id");
+      const requestedSpace = spacePath?.[1] ?? url.searchParams.get("space_id") ?? body.space_id;
+      const planSpace = key === "POST /v1/organize/deepen/apply" && typeof body.plan_id === "string" ? body.plan_id.replace(/^plan-/,"") : undefined;
+      const space = planSpace ?? requestedSpace ?? activeSpace();
+      if (required && space !== lease.space) problem(403,"library_mismatch","Owner leases are bound to the active library.");
+      const selected = visibleSpaces().find(s=>s.id === space);
+      if (!selected && requestedSpace !== undefined) problem(404,"space_not_found","Unknown fixture space.");
       const diary = journals.get(space) ?? [];
       const members = membersBySpace.get(space) ?? [];
       const grants = grantsBySpace.get(space) ?? [];
@@ -182,9 +199,12 @@
         if (value.parent_id != null) itemById(value.parent_id);
       };
       const limit = () => integer(url.searchParams.get("limit") ?? 50,1,200,"limit");
-      if (key === "GET /v1/health") return ok({status:"ready", instance_id:"preview", active_space_id:account ?? "studio",
+      if (key === "GET /v1/health") return ok({status:"ready", instance_id:"preview", active_space_id:activeSpace(),
         capabilities:["openapi.v1","model.catalog.v2","model.active_assets","model.managed_download","sse.operations.v1","host.transactions.v1","backups.v1","auth.handshake.v1"]});
-      if (key === "GET /v1/status/light") return ok({space_id:space, memory_count:items.length, diary_count:diary.length, indexed_count:items.length, last_updated_at:items.length ? stamp : null});
+      if (key === "GET /v1/status/light") {
+        if (!selected) problem(409,"no_active_space","Create a space first.");
+        return ok({space_id:space, memory_count:items.length, diary_count:diary.length, indexed_count:items.length, last_updated_at:items.length ? stamp : null});
+      }
       if (key === "GET /v1/memories") {
         const offset = integer(url.searchParams.get("cursor") ?? 0, 0, Number.MAX_SAFE_INTEGER, "cursor");
         const limit = integer(url.searchParams.get("limit") ?? 50, 1, 200, "limit");
@@ -201,7 +221,8 @@
       }
       if (key === "POST /v1/memories/recall") {
         if (typeof body.query !== "string" || !body.query.trim()) problem(400,"invalid_query","Enter a search term.");
-        const limit = integer(body.top_k ?? 10,1,100,"top_k");
+        const limit = "top_k" in body ? body.top_k : 10;
+        if (!Number.isInteger(limit) || limit < 1 || limit > 100) problem(400,"invalid_parameter","Invalid top_k");
         const hits = items.filter(m => [m.title,m.content,m.category].join(" ").toLowerCase().includes(body.query.toLowerCase())).slice(0,limit).map(memory => ({memory,score:1}));
         const entries = queries.get(space) ?? [];
         entries.unshift({id:String(entries.length + 1),recorded_at:stamp,candidate_count:hits.length,adopted_count:0,good_count:0,bad_count:0});
@@ -260,9 +281,14 @@
         if (!["true","false"].includes(processed) || url.searchParams.get("memory_id") === "") problem(400,"invalid_parameter","Invalid conflict filter.");
         return ok({items:conflicts.filter(c => items.some(m => m.id === c.memory_id) && (processed === "true" || c.state === "pending") && (!url.searchParams.has("memory_id") || c.memory_id === url.searchParams.get("memory_id")))});
       }
-      if (key === "GET /v1/diary") return ok({entries:diary.filter(d => !url.searchParams.has("date") || d.date === url.searchParams.get("date"))});
+      if (key === "GET /v1/diary") {
+        const filter = url.searchParams.get("date");
+        if (filter !== null && !calendarDate(filter)) problem(400,"invalid_parameter","Invalid date");
+        return ok({entries:diary.filter(d => filter === null || d.date === filter)});
+      }
       if (key === "POST /v1/diary") {
-        if (typeof body.content !== "string" || !body.content.trim() || !/^\d{4}-\d{2}-\d{2}$/.test(body.date)) problem(400,"invalid_entry","Enter a date and text.");
+        if (typeof body.content !== "string" || !body.content.trim() || !calendarDate(body.date)) problem(400,"invalid_entry","Enter a valid date and text.");
+        if (!selected) problem(409,"no_active_space","Create a space first.");
         const entry = {date:body.date, content:body.content, updated_at:stamp, id:"day-" + body.date};
         journals.set(space,[entry,...diary.filter(d => d.date !== body.date)]);
         return ok(entry);
@@ -276,7 +302,7 @@
       }
       if (key === "POST /v1/organize/deepen/apply") {
         const plan = plans.get(body.plan_id);
-        if (!plan || !plan.moves.length) problem(409,"invalid_plan","Preview an applicable plan first.");
+        if (!selected || !plan || !plan.moves.length) problem(409,"invalid_plan","Preview an applicable plan first.");
         const op = start("organize",plan.moves);
         plans.delete(body.plan_id);
         return ok(op,202);
@@ -299,29 +325,33 @@
       }
       if (key === "GET /v1/sync/status") return ok({state:[...ops.values()].some(o=>o.kind === "sync" && o.state === "running") ? "syncing" : "idle",pending_outbox:outbox,last_synced_at:empty ? null : stamp});
       if (key === "POST /v1/sync/trigger") return ok(start("sync"),202);
-      if (key === "GET /v1/spaces") return ok({spaces:spaces.map(s => ({...s,active:s.id === space}))});
+      if (key === "GET /v1/spaces") return ok({spaces:visibleSpaces().map(s => ({...s,active:s.id === activeSpace()}))});
       if (key === "POST /v1/spaces") {
         text(body.name,"space name");
-        const created = {id:"space-" + (++seq),name:body.name,role:"owner",active:!spaces.length};
-        if (created.active) { account = created.id; invalidate(); }
+        const created = {id:"space-" + (++seq),name:body.name,role:"owner"};
+        const activate = !activeSpace();
+        if (activate) { profiles.set(profile(),created.id); invalidate(); }
         spaces.push(created);
+        owners.set(created.id,[profile()]);
         membersBySpace.set(created.id,[{member_id:"owner",role:"owner",status:"active"}]);
         grantsBySpace.set(created.id,[]);
-        return ok(created,201);
+        return ok({...created,active:activate},201);
       }
       if (spacePath && !path.endsWith("/members")) {
-        if (method === "GET") return ok({...selected,active:account === selected.id});
+        if (method === "GET") return ok({...selected,active:activeSpace() === selected.id});
         if (method === "PATCH") {
           if ("name" in body) text(body.name,"space name");
           if ("active" in body && typeof body.active !== "boolean") problem(400,"invalid_active","Active must be a boolean.");
-          if (body.active === false && account === space) problem(409,"active_space","Activate another space first.");
+          if (body.active === false && activeSpace() === space) problem(409,"active_space","Activate another space first.");
           if ("name" in body) selected.name = body.name;
-          if (body.active && account !== space) { account = space; invalidate(); }
-          return ok({...selected,active:account === space});
+          if (body.active && activeSpace() !== space) { profiles.set(profile(),space); invalidate(); }
+          return ok({...selected,active:activeSpace() === space});
         }
         if (method === "DELETE") {
-          if (account === space) problem(409,"active_space","Activate another space before deleting this one.");
+          if (activeSpace() === space) problem(409,"active_space","Activate another space before deleting this one.");
           spaces.splice(spaces.indexOf(selected),1);
+          owners.delete(space);
+          for (const [id,selection] of profiles) if (selection === space) profiles.set(id,undefined);
           for (let i = memories.length - 1; i >= 0; i--) if (memories[i].space_id === space) { deleted.delete(memories[i].id); reviews.delete(memories[i].id); memories.splice(i,1); }
           journals.delete(space); membersBySpace.delete(space); grantsBySpace.delete(space); queries.delete(space);
           return ok(undefined,204);
@@ -341,8 +371,7 @@
         transaction = body.mode === "browser_oauth" ? "login_pending" : body.mode === "recovery" ? "recovery_pending" : "none";
         if (body.mode === "browser_oauth") return ok({status:"pending_browser",authorize_url:null,message:"Synthetic browser login pending; no external identity provider is contacted."});
         if (body.mode === "recovery") return ok({status:"pending_confirmation",message:"Synthetic recovery awaits confirmation; no keys are loaded."});
-        if (!spaces.length) problem(409,"no_space","Create a synthetic space before setup.");
-        account = spaces[0].id;
+        account = "studio";
         invalidate();
         return ok({status:"completed"});
       }
@@ -355,13 +384,21 @@
         return ok({...config});
       }
       // Preview-only controls have no canonical Runtime operation.
-      if (key === "GET /preview/library") return ok({installed:[...installed],operations:[...ops.keys()].map(snapshot),accounts:spaces.map(s=>s.id)});
+      if (key === "GET /preview/library") return ok({installed:[...installed],operations:[...ops.keys()].map(snapshot),accounts:[...profiles.keys()]});
+      if (key === "POST /preview/owner-challenge") {
+        if (!account) problem(401,"owner_proof_rejected","Synthetic owner proof rejected.");
+        const now = currentTime();
+        for (const [proof,expires] of challenges) if (expires <= now) challenges.delete(proof);
+        const challenge = scenario + "-" + (++challengeSequence);
+        challenges.set("synthetic-owner-proof-" + challenge,now + 30);
+        return ok({challenge});
+      }
       if (key === "POST /preview/uninstall") {
         if (body.model_id === active) problem(409,"active_model","Active model is in use.");
         if (!installed.delete(body.model_id)) problem(404,"model_missing","Model is not installed.");
         return ok({installed:[...installed]});
       }
-      if (key === "POST /preview/account" && spaces.some(s => s.id === body.id)) { account = body.id; invalidate(); return ok({account}); }
+      if (key === "POST /preview/account" && profiles.has(body.id)) { account = body.id; invalidate(); return ok({account}); }
       problem(404,"route_not_found","Unknown fixture route.");
     }
     return {request,tick,snapshot,advanceTime:seconds => { clock += integer(seconds,0,Number.MAX_SAFE_INTEGER,"seconds"); }};

@@ -35,7 +35,8 @@ async function api(path,method = "GET",body,extraHeaders = {}) {
 }
 let ownerHeaders;
 async function authorizeOwner() {
-  const data = await api("/v1/auth/handshake","POST",{scopes:["grants:read","grants:revoke","stats:read","query-log:read","reviews:read","sync-conflicts:read"]},{"X-Respire-Handshake-Proof":"synthetic-owner-proof-only"});
+  const {challenge} = await api("/preview/owner-challenge","POST",{});
+  const data = await api("/v1/auth/handshake","POST",{scopes:["grants:read","grants:revoke","stats:read","query-log:read","reviews:read","sync-conflicts:read"]},{"X-Respire-Handshake-Proof":"synthetic-owner-proof-" + challenge});
   ownerHeaders = {Authorization:"Bearer " + data.access_token};
   notice("Synthetic owner session enabled for this page only. No real credentials are used.");
 }
