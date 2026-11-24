@@ -521,11 +521,11 @@ compiled Runtime integration require separate execution.
 | Requirement | Implemented checks | Outstanding evidence or implementation |
 | --- | --- | --- |
 | T05-04 | Cold start and capabilities, download cancel and retry, live recall during switch, rollback, space CRUD and isolation | All five compiled Runtime scenarios need execution. Model cases also need offline model fixtures. |
-| T05-04 legacy SQLite | [Fixture provenance and blockers](fixtures/README.md) | UNSUPPORTED by the runner. Historical snapshots and migration, backup, restart, downgrade, and row-preservation checks need the legacy schema and a controlled target. |
-| T05-04 Vault | [Fixture provenance and blockers](fixtures/README.md) | UNSUPPORTED by the runner. Vault v1–v4 vectors and unlock/decryption checks need historical codec evidence and a controlled target. |
-| T05-05 transport | Windows HTTP/MCP entry point through a test-owned UTF-8 junction, offline HTTP byte checks and concurrent store/recall, MCP framing, junction target preservation on teardown | Native junction and compiled Windows executions are required. Online model operations, Paused sentinel, OneDrive-specific behavior, and single-pass hashing checks need a product fixture. |
-| T05-05 CLI and legacy RPC | Production-only E2E-006 and E2E-007 | Compiled execution is pending. Full CLI subcommands and legacy flag parity, TUI, actual IDE injection, `keys-export`, `doctor --fix`, model uninstall, upgrade/fallback, and legacy `model.switch` are unsupported by these checks. |
-| T05-06 | Static fixture validation, Playwright en/zh Mock Render and compiled WebUI modes | Browser execution needs a local Playwright package and browser. Compiled WebUI needs the build fixture. Native Wails and Client2 with compiled Runtime are unsupported by this suite. |
+| T05-04 legacy SQLite | [Released synthetic 1.x Golden and native app restore](fixtures/db/README.md) | The published marker 0, two synthetic encrypted rows, selected review/grant/query data and two pending sync operations are verified across upgrade and reopen. Broader audit histories are not asserted. |
+| T05-04 Vault | [Pinned synthetic Vault v1-v4 vectors](fixtures/crypto/README.md) | All eight native decryption/wrong-factor cases cover both domains. A compiled Runtime unlock and legacy recall matrix is separate from the codec probe. |
+| T05-05 transport | Windows HTTP/MCP in an owned UTF-8 NTFS junction, byte-exact payloads and concurrent store/recall, MCP framing, junction target preserved | Native compiled Windows junction cases passed. Online inactive-model uninstall, OneDrive-specific paths and zero lingering Paused locks are not attested. |
+| T05-05 CLI and legacy RPC | Native production-binary E2E-006 and E2E-007 smoke cases | Scope is status JSON, inject help and the checked legacy RPC operations. Full CLI/TUI/IDE injection, model uninstall, and legacy model switch need separate real coverage. |
+| T05-06 | Fixture validation and Playwright en/zh Mock Render (38 passed); compiled WebUI mode available | Compiled WebUI with the real catalogs needs a build fixture. Native Wails and cross-platform compiled Runtime integration belong to CARD-019. |
 
 The Change 005 Windows large-payload scenario maps to
 [windows.mjs](plugin-rpc/windows.mjs). Its legacy compatibility scenario is
