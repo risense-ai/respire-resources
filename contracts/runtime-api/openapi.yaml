@@ -850,12 +850,238 @@ paths:
         default:
           $ref: "#/components/responses/RuntimeProblem"
 
+  /v1/grants:
+    get:
+      operationId: listAccessGrants
+      tags: [memories]
+      summary: List access grant metadata for the active library
+      description: Requires an authenticated Runtime-local request bound to the active library. Grant tokens and token hashes are never returned.
+      security:
+        - scopedOwnerBearer: []
+      x-respire-required-scope: "grants:read"
+      responses:
+        "200":
+          description: Access grant metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessGrantListResponse"
+        "401":
+          $ref: "#/components/responses/LocalBearerUnauthorized"
+        default:
+          $ref: "#/components/responses/RuntimeProblem"
+
+  /v1/grants/{grantId}:
+    delete:
+      operationId: revokeAccessGrant
+      tags: [memories]
+      summary: Revoke an access grant in the active library
+      description: Revocation retains the historical metadata and does not delete shared memories. Only full grant IDs are accepted. An already inactive or unknown grant is not distinguishable.
+      security:
+        - scopedOwnerBearer: []
+      x-respire-required-scope: "grants:revoke"
+      parameters:
+        - name: grantId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Grant is no longer active in the authenticated library
+        "401":
+          $ref: "#/components/responses/LocalBearerUnauthorized"
+        default:
+          $ref: "#/components/responses/RuntimeProblem"
+
+  /v1/stats:
+    get:
+      operationId: getLibraryStats
+      tags: [health]
+      summary: Read aggregate counts for the active library
+      description: Returns counts and the latest update timestamp without account paths or raw records.
+      security:
+        - scopedOwnerBearer: []
+      x-respire-required-scope: "stats:read"
+      responses:
+        "200":
+          description: Active library statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryStatsResponse"
+        "401":
+          $ref: "#/components/responses/LocalBearerUnauthorized"
+        default:
+          $ref: "#/components/responses/RuntimeProblem"
+
+  /v1/query-log:
+    get:
+      operationId: getQueryLog
+      tags: [memories]
+      summary: Read a bounded page of query-log metadata
+      description: Returns recent metadata and library aggregates, never raw query text, request IDs, or filesystem paths. Counts are not calculated only from the returned page.
+      security:
+        - scopedOwnerBearer: []
+      x-respire-required-scope: "query-log:read"
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        "200":
+          description: Query-log metadata and activity aggregates
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QueryLogResponse"
+        "401":
+          $ref: "#/components/responses/LocalBearerUnauthorized"
+        default:
+          $ref: "#/components/responses/RuntimeProblem"
+
+  /v1/memories/{memoryId}/reviews:
+    get:
+      operationId: listMemoryReviews
+      tags: [memories]
+      summary: Read bounded review history for a memory in the active library
+      description: Read-only history does not grant review approval or expose its private authorization material.
+      security:
+        - scopedOwnerBearer: []
+      x-respire-required-scope: "reviews:read"
+      parameters:
+        - name: memoryId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        "200":
+          description: Memory review history, newest first
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemoryReviewListResponse"
+        "401":
+          $ref: "#/components/responses/LocalBearerUnauthorized"
+        default:
+          $ref: "#/components/responses/RuntimeProblem"
+
+  /v1/sync/conflicts:
+    get:
+      operationId: listSyncConflicts
+      tags: [sync]
+      summary: Read bounded conflict metadata for the active library
+      description: Returns at most 200 records in descending conflict revision order. Current head revisions are reported only when available, not invented for reclaimed or historical payloads.
+      security:
+        - scopedOwnerBearer: []
+      x-respire-required-scope: "sync-conflicts:read"
+      parameters:
+        - name: memory_id
+          in: query
+          schema:
+            type: string
+            minLength: 1
+        - name: include_processed
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: Synchronization conflict metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncConflictListResponse"
+        "401":
+          $ref: "#/components/responses/LocalBearerUnauthorized"
+        default:
+          $ref: "#/components/responses/RuntimeProblem"
+
+  /v1/auth/handshake:
+    post:
+      operationId: exchangePrivateOwnerProof
+      tags: [host]
+      summary: Issue an account-bound scoped local access token
+      description: |
+        Available only when discovery advertises auth.handshake.v1. Accept only a loopback socket peer
+        and the same Host and Origin validation as the legacy RPC listener. Host, Origin, and loopback
+        alone do not confer ownership.
+        Exchange a single X-Respire-Handshake-Proof header obtained over the existing OS-owner-verified
+        private host channel. The proof is opaque, high-entropy, issued only to a verified native owner,
+        valid for no more than 30 seconds, and atomically consumed on exchange. Replayed, stale, mismatched,
+        multiple, or invalid proofs never return a token. Do not accept the discovery bearer, another
+        bearer, a cookie, a query parameter, or a request-body field as proof.
+        The Runtime derives the account, profile, instance, and generation from authoritative live state.
+        A proof is bound to that exact state and exactly the approved scope set. The exchange grants all
+        and only those requested scopes or fails. No account or profile can be selected by the caller.
+        The lease is opaque, short-lived, and memory-only. Account or profile switch, logout, vault lock,
+        or Runtime restart revoke it before access to changed state. There is no refresh token. The lease
+        grants no super-password, key export, rotation, registration, or other private key authority.
+        Do not log or retain proof or token material. No error body identifies a proof or exposes secrets.
+      security:
+        - privateLocalOwnerProof: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OwnerHandshakeRequest"
+      responses:
+        "200":
+          description: Opaque scoped token returned to the verified native owner
+          headers:
+            Cache-Control:
+              required: true
+              description: Prevent storage of credential material by clients or intermediaries.
+              schema:
+                type: string
+                enum: [no-store]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OwnerHandshakeResponse"
+        "401":
+          description: Owner proof absent, rejected, or no longer usable. No proof-state details are returned.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+        "403":
+          $ref: "#/components/responses/RuntimeProblem"
+        default:
+          $ref: "#/components/responses/RuntimeProblem"
+
 components:
   securitySchemes:
     localBearer:
       type: http
       scheme: bearer
       description: Opaque Runtime-local access token obtained through local discovery. Not an account or upstream token.
+    privateLocalOwnerProof:
+      type: apiKey
+      in: header
+      name: X-Respire-Handshake-Proof
+      description: Handshake-only single-use credential delivered by the OS-owner-verified private host channel. It is not available from HTTP discovery, is not a bearer, and must never be populated automatically by an ordinary HTTP client.
+    scopedOwnerBearer:
+      type: http
+      scheme: bearer
+      description: Short-lived, in-memory account- and profile-bound access token issued by the owner handshake. Not interchangeable with the discovery bearer. Each protected operation declares its required scope.
+
   responses:
     RuntimeProblem:
       description: Unsuccessful Runtime request
@@ -1410,3 +1636,217 @@ components:
           type: string
         proxy_url:
           type: [string, "null"]
+
+    AccessGrantListResponse:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AccessGrantItem"
+
+    AccessGrantItem:
+      type: object
+      additionalProperties: false
+      required: [id, label, root_id, created_at, revoked]
+      properties:
+        id:
+          type: string
+          format: uuid
+        label:
+          type: string
+        root_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        revoked:
+          type: boolean
+
+    LibraryStatsResponse:
+      type: object
+      additionalProperties: false
+      required: [local_total, local_alive, remote_configured]
+      properties:
+        local_total:
+          type: integer
+          minimum: 0
+        local_alive:
+          type: integer
+          minimum: 0
+        remote_configured:
+          type: boolean
+        max_updated_at:
+          type: string
+          format: date-time
+
+    QueryLogResponse:
+      type: object
+      additionalProperties: false
+      required: [items, stats]
+      properties:
+        items:
+          type: array
+          maxItems: 200
+          items:
+            $ref: "#/components/schemas/QueryLogItem"
+        stats:
+          $ref: "#/components/schemas/QueryLogAggregates"
+
+    QueryLogItem:
+      type: object
+      additionalProperties: false
+      required: [id, recorded_at, candidate_count, adopted_count, good_count, bad_count]
+      properties:
+        id:
+          type: string
+          pattern: "^[0-9]{1,19}$"
+          description: Decimal SQLite row identifier, serialized without floating-point conversion.
+        recorded_at:
+          type: string
+          format: date-time
+        candidate_count:
+          type: integer
+          minimum: 0
+        adopted_count:
+          type: integer
+          minimum: 0
+        good_count:
+          type: integer
+          minimum: 0
+        bad_count:
+          type: integer
+          minimum: 0
+
+    QueryLogAggregates:
+      type: object
+      additionalProperties: false
+      required: [total, with_adopted, empty_candidates, good_total, bad_total]
+      properties:
+        total:
+          type: integer
+          minimum: 0
+        with_adopted:
+          type: integer
+          minimum: 0
+        empty_candidates:
+          type: integer
+          minimum: 0
+        good_total:
+          type: integer
+          minimum: 0
+        bad_total:
+          type: integer
+          minimum: 0
+
+    MemoryReviewListResponse:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          maxItems: 200
+          items:
+            $ref: "#/components/schemas/MemoryReviewItem"
+
+    MemoryReviewItem:
+      type: object
+      additionalProperties: false
+      required: [sequence, record_revision, action, happened_at]
+      properties:
+        sequence:
+          type: string
+          pattern: "^[0-9]{1,19}$"
+          description: Decimal SQLite sequence, serialized without floating-point conversion.
+        record_revision:
+          type: string
+        action:
+          type: string
+        happened_at:
+          type: string
+          format: date-time
+
+    SyncConflictListResponse:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          maxItems: 200
+          items:
+            $ref: "#/components/schemas/SyncConflictItem"
+
+    SyncConflictItem:
+      type: object
+      additionalProperties: false
+      required: [epoch, revision, memory_id, state]
+      properties:
+        epoch:
+          type: string
+        revision:
+          $ref: "#/components/schemas/SyncConflictRevision"
+        memory_id:
+          type: string
+        state:
+          type: string
+          enum: [historical_epoch, processed, resolving, pending]
+        current_head_revision:
+          $ref: "#/components/schemas/SyncConflictRevision"
+        resolution:
+          type: string
+          description: Action reported from this conflict's stored receipt.
+        queued_action:
+          type: string
+          description: Action reported from this conflict's stored receipt.
+
+    SyncConflictRevision:
+      type: string
+      pattern: "^[1-9][0-9]{0,18}$"
+      description: Positive signed 64-bit revision in decimal without floating-point conversion.
+
+    OwnerHandshakeRequest:
+      type: object
+      additionalProperties: false
+      required: [scopes]
+      properties:
+        scopes:
+          type: array
+          minItems: 1
+          maxItems: 6
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/OwnerAccessScope"
+
+    OwnerHandshakeResponse:
+      type: object
+      additionalProperties: false
+      required: [access_token, token_type, expires_in, scopes]
+      properties:
+        access_token:
+          type: string
+          minLength: 1
+          description: Opaque private credential. Do not persist, log, cache, or display it.
+        token_type:
+          type: string
+          enum: [Bearer]
+        expires_in:
+          type: integer
+          minimum: 1
+          maximum: 300
+          description: Seconds remaining when issued. Identity invalidation can end the lease earlier.
+        scopes:
+          type: array
+          minItems: 1
+          maxItems: 6
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/OwnerAccessScope"
+
+    OwnerAccessScope:
+      type: string
+      enum: ["grants:read", "grants:revoke", "stats:read", "query-log:read", "reviews:read", "sync-conflicts:read"]
