@@ -1021,11 +1021,27 @@ paths:
         Available only when discovery advertises auth.handshake.v1. Accept only a loopback socket peer
         and the same Host and Origin validation as the legacy RPC listener. Host, Origin, and loopback
         alone do not confer ownership.
-        Exchange a single X-Respire-Handshake-Proof header obtained over the existing OS-owner-verified
-        private host channel. The proof is opaque, high-entropy, issued only to a verified native owner,
-        valid for no more than 30 seconds, and atomically consumed on exchange. Replayed, stale, mismatched,
-        multiple, or invalid proofs never return a token. Do not accept the discovery bearer, another
-        bearer, a cookie, a query parameter, or a request-body field as proof.
+        The owner is the OS user running the Runtime, independent of how a local client was built or installed.
+        An owner derives one proof from the current Runtime credential in an OS-owner-only runtime location.
+        The local credential must never be sent over HTTP. Exchange the derived proof only in a single
+        X-Respire-Handshake-Proof header. It is valid for no more than 30 seconds and atomically consumed
+        on exchange. Replayed, stale, mismatched, multiple, or invalid proofs never return a token. Do not
+        accept the discovery bearer, another bearer, a cookie, a query parameter, or a request-body field as proof.
+
+        Use runtime/.owner-credentials-<instance_id>/secret under the active Runtime data root, with the
+        instance identifier from Runtime discovery. On Unix, the owner-only directory and file use modes
+        0700 and 0600; on Windows, access is restricted to the owning user by its DACL. No path or secret
+        is returned by the HTTP discovery API.
+
+        For the local credential record, the first 32 bytes are a fresh secret key and the next 16 bytes
+        are the opaque epoch for the current Runtime authorization state. The proof is the ASCII prefix rhp1_
+        followed by lowercase hexadecimal encoding of the concatenation of the 16-byte epoch, an unsigned
+        8-byte big-endian Unix timestamp in milliseconds, a fresh 16-byte cryptographically random nonce,
+        a one-byte scope mask, and a 32-byte HMAC-SHA-256 tag. The tag authenticates the ASCII domain
+        respire-local-owner-proof-v1 followed by one NUL byte and then the preceding 41 bytes before the tag.
+        Scope mask bits 0 through 5 are grants:read, grants:revoke, stats:read, query-log:read, reviews:read,
+        and sync-conflicts:read respectively. The mask must be nonzero and no other bits are accepted.
+        Reject future timestamps. Do not evict unexpired proof replay records to accept newer proofs.
         The Runtime derives the account, profile, instance, and generation from authoritative live state.
         A proof is bound to that exact state and exactly the approved scope set. The exchange grants all
         and only those requested scopes or fails. No account or profile can be selected by the caller.
@@ -1076,7 +1092,7 @@ components:
       type: apiKey
       in: header
       name: X-Respire-Handshake-Proof
-      description: Handshake-only single-use credential delivered by the OS-owner-verified private host channel. It is not available from HTTP discovery, is not a bearer, and must never be populated automatically by an ordinary HTTP client.
+      description: Handshake-only single-use proof derived from the protected Runtime credential by the same OS user. It is not available from HTTP discovery, is not a bearer, and must never be populated automatically by an ordinary HTTP client.
     scopedOwnerBearer:
       type: http
       scheme: bearer
