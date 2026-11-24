@@ -19,6 +19,7 @@ Run from the Resources root with Node.js 22 or later.
 ~~~sh
 node test-cases/runner.mjs --mock
 node --test test-cases/runner.test.mjs prototypes/mock-api/parity.test.mjs prototypes/mock-api/behavior.test.mjs prototypes/mock-api/gallery.test.mjs
+node --test test-cases/modern-ready.test.mjs
 node --test '--test-name-pattern=16 exact|all five|HTTP adapter|direct operation' prototypes/mock-api/server.test.mjs
 node process/scripts/validate-openspec.mjs
 git diff --check
@@ -58,7 +59,7 @@ The loopback walkthrough uses an actual TCP socket and a Mock Runtime.
 Use explicitly supplied, offline-ready binaries and a known synthetic profile on
 a network-isolated test host. A preloaded model case must use only local assets
 or a test-owned loopback model source. The runner starts an owned Runtime on OS
-loopback, requires its PID to match health, creates a fresh external temp
+loopback, verifies the owned process identity, creates a fresh external temp
 profile per scenario, and removes the profile after the owned process exits.
 Fixture profiles contain regular files and directories. Do not supply installed
 profiles, credential files, or live service endpoints.
@@ -100,6 +101,133 @@ The CLI tag exercises the scoped status request in `cli/tests/net_rpc_http.rs`.
 Default compiled checks require `GET /v1/health` and use `POST /rpc` for
 the compatibility shim.
 
+Modern readiness requires `status: ready`, a nonblank `instance_id`, and a
+`capabilities` array containing only strings, as defined by `HealthResponse`.
+An empty or partial capability list is valid; generic CLI and legacy HTTP/MCP
+startup do not require optional `openapi.v1` or `sse.operations.v1` flags.
+Feature-specific checks retain their explicit capability requirements. It then reads
+`runtime/endpoint.json` under the owned fixture profile and requires its `pid`
+to equal the spawned child PID, its `instance_id` to match modern health, and
+its `url` to equal the reserved loopback URL. A health `pid` cannot substitute
+for this record. Missing or mismatched records fail; there is no HTTP fallback
+from modern to legacy health. The record shape follows `rpc_worker::endpoint_body`
+and `rpc_serve::endpoint_identity` in Runtime; current-artifact publication still
+needs a successful compiled run on a host that permits loopback.
+
+### Focused capability-readiness regression evidence
+
+On 2026-11-25, the focused readiness regression first failed with
+`Missing canonical OpenAPI/SSE capabilities` before the probe fix. After the fix:
+
+- `node --test test-cases/runner.test.mjs test-cases/modern-ready.test.mjs`:
+  22 passed, zero failures or skips. Guards accept empty and partial string
+  lists, including `auth.handshake.v1` alone; reject missing, null, non-array,
+  and mixed-type capabilities; and retain endpoint PID/instance/URL rejection.
+  The synthetic startup sequence also uses only `auth.handshake.v1`.
+- `node --test prototypes/mock-api/parity.test.mjs prototypes/mock-api/behavior.test.mjs prototypes/mock-api/gallery.test.mjs`:
+  64 passed, zero failures or skips, including typed SSE checks.
+- `node test-cases/runner.mjs --mock --verify`:
+  `passed=5 skipped=2 failures=0 preflight=false`; compiled legacy cases are
+  optional in mock mode and supply no native acceptance evidence.
+- `node process/scripts/validate-openspec.mjs` and `git diff --check`: passed.
+- `node --test test-cases/plugin-rpc/windows-junction.test.mjs`: failed before
+  Runtime launch with `Owned synthetic junction creation failed; code=EPERM`.
+
+Native compiled CLI/HTTP/MCP acceptance remains UNTESTED in this regression run.
+Released-old checks, actual junction requirements, and feature-specific
+OpenAPI/SSE assertions remain unchanged. No Runtime source or API contract changed.
+
+### Explicit synthetic modern ready setup
+
+An empty modern profile reports `degraded` before unlock. For a disposable ready
+profile, opt in explicitly; do not pass `--profile-fixture` or `--released-old`:
+
+~~~powershell
+node test-cases/cli-e2e/smoke.mjs --synthetic-ready --runtime-bin "$RuntimeBin" --cli-bin "$CliBin" --verify
+node test-cases/plugin-rpc/windows.mjs --synthetic-ready --runtime-bin "$RuntimeBin" --cli-bin "$CliBin" --verify
+node test-cases/runner.mjs --synthetic-ready --runtime-bin "$RuntimeBin" --cli-bin "$CliBin" --verify
+~~~
+
+A scenario manifest may instead set `"syntheticReady": true` for a case. It must
+not also supply `profile`. Prepared model cases still require their local assets
+and declared inputs; this setup supplies no models. Mock and preflight modes
+reject the command-line opt-in. Existing supplied-profile and released-old paths
+retain their previous startup behavior and do not invoke synthetic unlock.
+
+The harness prints `FIXTURE SYNTHETIC MODERN READY` before launch. The isolated
+root holds a freshly generated Vault v4 session, a random host token, and an empty
+model directory. It disables autosync. On Windows it applies owner-only ACLs to
+that newly created root, following the existing monorepo smoke. The fixture uses
+no real user configuration, credentials, keyring, installer, or remote service.
+The synthetic unlock key stays in memory and in the loopback unlock request; it is
+never written to session.json, command arguments, or diagnostic output.
+
+`modern-ready.mjs` follows `apps/runtime/scripts/smoke-owner-handshake.mjs` and
+`runtime-release-smoke-helpers.mjs` in the monorepo: generate the disposable
+`onememory:kek:v4` session, require the child-written endpoint PID/instance/URL
+before HTTP, and inspect `/api/health` solely for the locked unlock binding.
+Require modern `/v1/health` to report `degraded` before posting the supported
+`/api/runtime/unlock` request with profile, session SHA-256, instance, generation,
+and synthetic credentials. Unlock must report `store_ready: true`. The regular
+modern probe then still requires `ready`, string-array capabilities, and matching
+endpoint PID/instance/URL, with the same instance as before unlock. Legacy health
+does not substitute for modern readiness; no failed probe triggers this setup.
+
+The Windows command still places the workspace and profile through an actual
+test-owned junction. It neither canonicalizes that path away nor treats a
+junction rejection as success. The coordinator-reported configured-junction
+result (`exit 2`, `endpoint path contains a symlink`) belongs to the separate
+Runtime investigation. It was not reproduced by the restricted-host runs below.
+The latest coordinator report supersedes that startup observation with strict
+ready and confirmed ownership; actual transport acceptance still needs the
+feature round trips described in the T05-05 gate below.
+
+The focused Node tests use synthetic HTTP replies and a Node child in place of
+Runtime for startup sequencing. They verify the fixture's AES-GCM unwrap,
+session digest, locked-to-ready ordering, identity rejection, explicit opt-in,
+released-profile exclusions, and cleanup on failed unlock. They are harness
+evidence, not compiled Runtime acceptance.
+
+Startup failures include the child exit code and signal plus fixed, allowlisted
+diagnostic fragments. Each pipe retains only 128 trailing characters for split
+fragments; the retained matches are limited to the fixed allowlist. Arbitrary
+child logs, fixture paths, and credentials are excluded. On a startup failure,
+diagnostics allow up to 250 ms for the child to exit naturally before teardown.
+Junction creation failures report only the error code. These failures remain
+failures, including under `--verify`.
+
+### Restricted-host observation (2026-11-25)
+
+Only an empty, disposable synthetic fixture was used with these exact candidates:
+
+- `Temp/respire-card018-monorepo-candidates-20261124/rsrs-runtime.exe`
+- `Temp/respire-coordinator-20261124-1208/card-007.target/debug/rsrs.exe`
+
+The Runtime child exited with code `2` and the allowlisted fragment
+`os error 10013`; `runtime/endpoint.json` was absent (`ENOENT`). The HTTP probe
+also failed with restricted socket access. Separately, synthetic junction
+creation failed with `EPERM` before Runtime launch. This does not establish a
+Runtime junction rejection or an ancestor canonicalization bug. No ACL failure
+was established, so no fixture ACL or Runtime safety rule was changed. The CLI
+was not reached through a ready Runtime.
+
+Coordinator must rerun on permitted localhost and normal NTFS, first without a
+junction to establish current-artifact endpoint publication and identity, then
+with a disposable junction. If that run establishes a legitimate ancestor
+canonicalization failure, its diagnostics belong in a separate Runtime change;
+this suite must not bypass the safety check. These observations do not complete
+CARD-018 or provide compiled acceptance evidence.
+
+After adding the explicit synthetic-ready mode, the two exact candidates above
+were retried with the smoke command and `--synthetic-ready --verify`. Both cases
+failed before unlock with child exit `2` and `os error 10013`; summary:
+`passed=0 skipped=0 failures=3 preflight=false` (the third failure is the
+verification guard for zero passing cases). The synthetic Windows transport
+command with `--verify` failed while creating the actual junction with `EPERM`,
+before Runtime launch. These are separate host restrictions, not verification
+of the reported configured-junction Runtime rejection. No compiled ready,
+CLI/RPC, or junction transport success is claimed.
+
 The model cases require `downloadModel` (slow local download that
 reaches progress), `switchModel` (installed CPU model that stays in flight
 during recall), or `rollbackModel` (accepted switch that fails while checking
@@ -116,6 +244,198 @@ The filesystem-only junction check requires a Windows host that permits
 junction creation. It writes a synthetic frame through the junction and
 verifies that removing the junction leaves the physical target bytes intact.
 Both the junction and its target live under a fresh temp directory.
+
+### T05-05 feature checks and native gate
+
+The Change 005 large-payload scenario requires actual HTTP and MCP persistence
+and complete recall, not a particular health flag. OpenAPI `HealthResponse`
+describes `openapi.v1` as an example string; it defines no required capability
+member. The migration playbook still uses that flag for client transport
+selection. This runner selects its transport explicitly and tests the actual
+features; it does not change client negotiation or the E2E-001 capability case.
+Strict ready health and endpoint PID/instance/URL ownership remain mandatory.
+
+The Windows runner executes HTTP/en, HTTP/zh, MCP/en, and MCP/zh independently,
+each with its own disposable Runtime, profile, and junction. All four run even
+if an earlier check fails. Each request exceeds 100 KiB. HTTP requires create
+201, a nonempty stored ID, recall 200, the same ID, and byte-exact content;
+the HTTP case also requires the concurrent store/recall burst. MCP requires
+initialize, advertised remember/show/recall tools, matching JSON-RPC IDs,
+successful ResultEnvelopes, the same stored ID and byte-exact full content in
+`memory_show`, the stored ID in recall, and clean CLI exit. Recall byte equality
+remains a separate strict assertion: shortened recall fails acceptance even when
+show returns the complete content. Truncation semantics are unconfirmed.
+PASS is printed only after owned Runtime teardown and cleanup succeed.
+
+Run each transport separately when collecting native evidence:
+
+~~~powershell
+node test-cases/plugin-rpc/windows.mjs --synthetic-ready --transport http --runtime-bin "$RuntimeBin" --cli-bin "$CliBin" --verify
+node test-cases/plugin-rpc/windows.mjs --synthetic-ready --transport mcp --runtime-bin "$RuntimeBin" --cli-bin "$CliBin" --verify
+node test-cases/cli-e2e/smoke.mjs --synthetic-ready --runtime-bin "$RuntimeBin" --cli-bin "$CliBin" --verify
+~~~
+
+These memory routes use the installation-local bearer and Runtime-bound owner
+scope, rather than the six action-specific handshake leases. The fixture still
+uses the supported typed `/api/runtime/unlock` request documented above; it does
+not bypass authentication or manufacture a ready response. An empty-model
+fixture supplies no embedding model: any model-dependent store or recall
+failure remains FAIL. A fully ready, synthetic offline model profile may be
+supplied with `--profile-fixture` instead of `--synthetic-ready`.
+
+The coordinator reports native HTTP/en and HTTP/zh round trips exceeding
+196 KiB, concurrent store/recall, and actual junction ownership passing with
+the current synthetic Runtime and installed CLI. These are coordinator
+observations, not locally reproduced acceptance.
+
+E2E-007 keeps its read-only requests and success assertions. After strict
+modern ready health and endpoint PID/instance/URL ownership, only its
+`cli.exec` request reads `/api/health` for the mandatory legacy scope. That
+reply must identify the same child PID and modern instance, report the legacy
+server/protocol and completed ready state, and supply account, instance, and
+positive safe-integer generation. A mismatch fails before RPC dispatch.
+Modern requests still use `/rpc`; released-old requests deliberately use
+`/api/rpc` and the already validated released health scope. Status and catalog
+requests neither read this additional health reply nor acquire a scope.
+RPC bearer authentication remains required. Legacy health is never a
+substitute for modern readiness.
+
+Assertion failures identify the rule or field without printing actual or
+expected values. Focused harness checks cover routing, scope rejection,
+authentication retention, strict-ready ordering, unchanged E2E-007 assertions,
+and diagnostics with private synthetic values. On 2026-11-25,
+`node --test test-cases/runner.test.mjs test-cases/modern-ready.test.mjs`
+passed 23 tests with zero failures or skips. These use synthetic replies and
+a Node child; native E2E-007 acceptance still requires the coordinator rerun.
+
+The coordinator reports that the latest compiled E2E-006 and E2E-007 both
+PASS after the scope correction. These are coordinator observations, not
+acceptance reproduced in this restricted session.
+
+The coordinator directly verified that `ITEM VALUE` is CLI startup failure
+output before any MCP JSON-RPC, not a text tool result. With raw junction
+aliases in `RSRS_DATA_DIR`, `HOME`, and `USERPROFILE`, both `rsrs mcp` and
+`rsrs --client-only mcp` exit 1 on linked/outside-category profile checks.
+Canonical config paths into the same private fixture allowed both commands
+to initialize with real JSON-RPC, while retaining the actual junction cwd,
+the same Runtime through the junction, and strict ownership checks.
+
+The runner therefore constructs a separate MCP CLI environment from the
+owned fixture. It resolves only home/profile config fields (`HOME`,
+`USERPROFILE`, `APPDATA`, `LOCALAPPDATA`, the four `XDG_*` home fields, and
+`RSRS_DATA_DIR`). Before resolution, the environment must exactly match
+`isolatedEnv`, optionally with both fixed synthetic startup fields:
+`RSRS_M3_DIR=join(ownedRoot, "empty-models")` and `RSRS_NO_AUTOSYNC=1`.
+The models directory must be a regular owned directory without inner links,
+and its canonical path must match that exact child of the owned root. Missing
+paired fields, changed values, extra tools, and unknown flags remain rejected.
+The workspace must resolve to the expected physical directory
+inside the owned temp root. Config directories must resolve to that same
+directory or its exact profile child. Inner links remain forbidden.
+Runtime environment, junction cwd, temp paths, and binary paths keep their
+original aliases. No arbitrary environment or real profile is accepted.
+
+This tests Runtime and workspace junction behavior with spaces and UTF-8.
+The CLI home/profile is configured canonically for MCP; this does not prove
+that CLI profiles accept linked roots. The committed invocation remains
+`--client-only mcp`, with strict JSON-RPC and embedded JSON ResultEnvelopes,
+real tool errors, bilingual byte equality, and concurrent HTTP checks.
+Startup prose and corrupt replies remain failures. Native MCP/en and MCP/zh
+tool round-trip acceptance remains UNTESTED here; initialization alone is
+not acceptance. The coordinator runs the native rerun.
+
+Focused checks now cover unchanged Runtime environment, exact canonical
+config destinations, unchanged temp/bin aliases, arbitrary environment
+rejection, inner junction rejection, and workspace alias redirection.
+The non-native suite passed 24 tests with zero failures or skips using
+`node --test test-cases/runner.test.mjs test-cases/modern-ready.test.mjs`.
+The native junction fixture failed at junction creation with `EPERM` in
+this restricted host, before the new junction assertions could run.
+
+This restricted-host run used candidate directory
+`Temp/respire-card018-monorepo-candidates-1652`, Runtime SHA-256
+`8CA6D8CCBFAAF5508345DC5C33ECE5A741B3F35991B1CB82D18246EDD1554200`,
+and the CLI in `Temp/respire-coordinator-20261124-1208/card-007.target/debug`.
+CLI smoke failed before readiness with child exit 2 and `os error 10013`
+(`passed=0 skipped=0 failures=3`, including the verification guard).
+All four transport cases failed before launch with junction `EPERM`.
+Actual feature request/response acceptance is therefore UNTESTED on this host.
+Neither the prior assertion failure nor these host restrictions provide PASS.
+Native CLI, legacy RPC, HTTP/en+zh, and MCP/en+zh must all be green before push.
+
+### Synthetic MCP environment and three-tool regression (2026-11-25)
+
+The coordinator reported that the post-1728 native fixture failed before MCP
+spawn because synthetic preparation adds the two fixed environment fields.
+The validator now checks that exact pair and its owned models path, while
+retaining the original junction, profile, and arbitrary-environment checks.
+No Runtime code, real profiles, or arbitrary launch environment was changed.
+
+The coordinator also reported matching recall IDs with shorter content in both
+languages, while existing `memory_show {id}` returned full decrypted
+`details.entry`. This is independent coordinator evidence, not a local native
+PASS or confirmation that primary recall is intended to truncate.
+
+The isolated MCP allowlist now contains exactly remember, recall, and show.
+After remember, the fixture requires show to return the same ID and exact full
+UTF-8 content, then checks recall matching and clean CLI exit. It prints a
+separate show verification diagnostic before asserting recall byte equality.
+A shortened recall reports its actual and expected byte lengths and
+`truncation semantics UNCONFIRMED; strict acceptance failed`; it is never
+silently accepted as expected behavior.
+
+Local validation:
+- `node --test test-cases/runner.test.mjs test-cases/modern-ready.test.mjs`:
+  25 passed, zero failures or skips. The Node child fixture checks both
+  languages, full show/recall success, shortened show rejection, wrong recall
+  ID rejection, and shortened recall rejection. These are harness tests, not compiled acceptance.
+- The same suite checks the actual synthetic preparation through `withRuntime`,
+  fixed fields, partial pairs, changed values, unexpected flags, and extra tools.
+- `node --test test-cases/plugin-rpc/windows-junction.test.mjs`: FAIL at
+  junction creation with `EPERM`, before the synthetic environment assertions.
+- Native MCP/en and MCP/zh with `--synthetic-ready --transport mcp --verify`
+  and the candidates listed above: both FAIL at junction creation with `EPERM`,
+  before Runtime or CLI launch. Native initialization, show, recall lengths,
+  and full UTF-8 transport remain UNTESTED in this session.
+
+### Raw MCP content and occupied synthetic fixture regression (2026-11-25)
+
+The coordinator's native byte inspection found the original input unchanged as
+a suffix after a 29-byte legacy diary stamp in both languages. The stamp uses
+U+3010, U+65E5 U+8BB0, U+3011, local `YYYY-MM-DD HH:MM`, and a space.
+The fixture requested `importance: trivial`, which `dispatch_remember`
+intentionally stores as a titled diary. This observation identifies a fixture
+semantics mismatch, rather than transport corruption.
+
+The raw-content fixture now requests `importance: important` through the
+existing `memory_remember` tool. Both show and recall still require exact UTF-8
+byte equality and the stored ID. The three-tool allowlist, canonical MCP config,
+native junction association, ownership, framing, cleanup, and error checks stay
+in place. No product behavior changes or diary-specific acceptance claims are made.
+
+Synthetic preparation now rejects a nonempty profile or an existing
+`empty-models` fixture before any ACL command. It reports `EEXIST` with
+`Synthetic ready fixture already exists; refusing setup before ACL changes`.
+Owner-only ACL setup for fresh fixtures and exclusive `wx` creation remain.
+This prevents a second setup from failing on `SeSecurityPrivilege` before the
+intended occupied-fixture diagnostic.
+
+Local verification for this correction:
+
+- `node --test test-cases/runner.test.mjs test-cases/modern-ready.test.mjs`:
+  26 passed, zero failures or skips. Harness checks require important storage in
+  both languages and retain shortened show/recall rejection. Occupied session,
+  token, models directory, and unrelated-file cases assert zero ACL subprocess
+  calls and unchanged file bytes, names, modes, sizes, modification/change
+  timestamps, and environment.
+- Native MCP/en and MCP/zh with `--synthetic-ready --transport mcp --verify`
+  and the same candidate Runtime/CLI paths listed above: both FAIL with
+  `Owned synthetic junction creation failed; code=EPERM`, before Runtime/CLI
+  startup. Corrected native show/recall acceptance is UNTESTED on this host.
+  There was no bypass, substitute executable, or legacy clone.
+- The coordinator separately reported a native modern-ready positive result.
+  That report is external evidence; this local harness run does not reproduce
+  native readiness or the diary behavior.
 
 Online model uninstall still needs a compiled CLI or Client2 action and an
 offline profile with a known active model and an installed inactive model.

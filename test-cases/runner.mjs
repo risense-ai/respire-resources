@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import {readdir, readFile} from "node:fs/promises";
 import {isAbsolute} from "node:path";
-import {parseArgs} from "node:util";
+import {isDeepStrictEqual, parseArgs} from "node:util";
 import {pathToFileURL} from "node:url";
 import {assertBinary, checkFixtureProfile, mockTarget, withCleanup, withRuntime} from "./targets.mjs";
 import {cliTarget} from "./cli-e2e/command.mjs";
@@ -46,9 +46,9 @@ function resolve(value, variables, encode = false) {
 function check(response, expect) {
   const {status, media, data} = response;
   for (const [rule, entries] of Object.entries(expect)) {
-    if (rule === "status") assert.equal(status, entries, "HTTP status");
-    else if (rule === "media") assert.equal(media, entries, "Response media type");
-    else if (rule === "exit") assert.equal(response.exit, entries, "CLI exit code");
+    if (rule === "status") assert(status === entries, "HTTP status mismatch");
+    else if (rule === "media") assert(media === entries, "Response media type mismatch");
+    else if (rule === "exit") assert(response.exit === entries, "CLI exit code mismatch");
     else if (rule === "present") {
       for (const path of entries) {
         const actual = select(data, path);
@@ -58,17 +58,24 @@ function check(response, expect) {
       assert(["equal", "different", "oneOf", "includes", "excludes", "matches"].includes(rule), "Unknown assertion " + rule);
       for (const [path, expected] of Object.entries(entries)) {
         const actual = select(data, path);
-        assert.notEqual(actual, undefined, path + " is missing");
-        if (rule === "equal") assert.deepEqual(actual, expected, path);
-        if (rule === "different") assert.notDeepEqual(actual, expected, path);
+        assert(actual !== undefined, path + " is missing");
+        if (rule === "equal") assert(isDeepStrictEqual(actual, expected), path + " equality mismatch");
+        if (rule === "different") assert(!isDeepStrictEqual(actual, expected), path + " difference mismatch");
         if (rule === "oneOf") assert(expected.includes(actual), path + " has an unexpected value");
         if (rule === "matches") {
-          assert(typeof actual === "string" && typeof expected === "string" && expected.length &&
-            new RegExp(expected, "im").test(actual), path + " does not match expected pattern: " + expected);
+          assert(typeof actual === "string" && typeof expected === "string" && expected.length,
+            path + " matches requires nonempty string pattern and string value");
+          let pattern;
+          try {
+            pattern = new RegExp(expected, "im");
+          } catch {
+            throw new Error(path + " has invalid matches pattern");
+          }
+          assert(pattern.test(actual), path + " does not match expected pattern");
         }
         if (rule === "includes" || rule === "excludes") {
           assert(Array.isArray(actual), path + " must be an array");
-          for (const item of expected) assert.equal(actual.includes(item), rule === "includes", path);
+          for (const item of expected) assert(actual.includes(item) === (rule === "includes"), path + " " + rule + " mismatch");
         }
       }
     }
@@ -180,13 +187,17 @@ export async function loadScenarios(directory = here) {
 export async function main({legacyOnly = false} = {}) {
   const {values} = parseArgs({options: {
     "runtime-bin": {type: "string"}, "cli-bin": {type: "string"},
-    verify: {type: "boolean"},
+    verify: {type: "boolean"}, "synthetic-ready": {type: "boolean"},
     ...(legacyOnly ? {"profile-fixture": {type: "string"}, preflight: {type: "boolean"},
       "released-old": {type: "boolean"}} : {
       mock: {type: "boolean"}, "runtime-fixtures": {type: "string"}
     })
   }});
   const {"runtime-bin": runtimeBin, "cli-bin": cliBin, "runtime-fixtures": manifest, "released-old": releasedOld} = values;
+  assert(!values["synthetic-ready"] || (!values.mock && !values.preflight),
+    "Synthetic ready setup requires compiled execution, not mock or preflight");
+  assert(!values["synthetic-ready"] || (!releasedOld && !values["profile-fixture"]),
+    "Synthetic ready setup cannot use released-old or a supplied profile");
   assert(!(values.verify && values.preflight), "Verification cannot use preflight (no suites execute)");
   assert(!releasedOld || (runtimeBin && cliBin && values["profile-fixture"]),
     "Released-old baseline requires --runtime-bin, --cli-bin and --profile-fixture");
@@ -212,12 +223,13 @@ export async function main({legacyOnly = false} = {}) {
     const cli = scenario.target === "cli";
     const targetName = cli ? "COMPILED CLI" : legacy ? "COMPILED LEGACY RPC" : values.mock ? "MOCK FIXTURE" : "COMPILED RUNTIME";
     const label = targetName + " " + scenario.id + " " + scenario.title + (releasedOld ? " [released-old]" : "");
-    const fixture = legacyOnly ? {profile: values["profile-fixture"]} : fixtures[scenario.id];
+    const fixture = legacyOnly ? {profile: values["profile-fixture"], syntheticReady: values["synthetic-ready"]} :
+      {...fixtures[scenario.id], ...(values["synthetic-ready"] ? {syntheticReady: true} : {})};
     const missing = [];
     if (!values.mock || legacy) {
       if (!runtimeBin) missing.push("absolute Runtime binary");
       if (cli && !cliBin) missing.push("absolute CLI binary");
-      if (legacy && !fixture?.profile) missing.push("synthetic profile directory");
+      if (legacy && !fixture?.profile && !fixture?.syntheticReady) missing.push("synthetic profile directory");
       for (const name of scenario.inputs ?? []) {
         if (!fixture?.inputs?.[name]) missing.push("offline input " + name);
       }

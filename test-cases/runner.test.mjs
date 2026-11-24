@@ -7,17 +7,26 @@ import {tmpdir} from "node:os";
 import {join, relative, isAbsolute, sep} from "node:path";
 import test from "node:test";
 import {setTimeout as delay} from "node:timers/promises";
+import {PassThrough} from "node:stream";
 import {fileURLToPath} from "node:url";
-import {promisify} from "node:util";
+import {inspect, promisify} from "node:util";
 import {harness} from "../prototypes/mock-api/http-harness.mjs";
 import {loadScenarios, runScenario} from "./runner.mjs";
-import {httpTarget, isolatedEnv, mockTarget, ownedProcess, probeReadiness, sseFrames, withRuntime} from "./targets.mjs";
+import {canonicalMcpEnv, httpTarget, isolatedEnv, mockTarget, ownedProcess, probeReadiness, sseFrames, startupDiagnostics, withRuntime} from "./targets.mjs";
 import {exactBytes, httpBurst, httpRoundTrip, minimumBytes, payload} from "./plugin-rpc/transport.mjs";
-import {decodeResult, frame} from "./plugin-rpc/mcp.mjs";
+import {decodeResult, frame, mcpRoundTrip} from "./plugin-rpc/mcp.mjs";
 import {cancellationServer} from "./client2-e2e/cancellation.mjs";
 import {screens, validateCatalogs, validateScreens} from "./client2-e2e/layout.mjs";
 
 test("owned process waits for child exit and closes test-owned stdio", async t => {
+  const child = {stdout: new PassThrough(), stderr: new PassThrough(), exitCode: 2, signalCode: null};
+  const diagnostics = startupDiagnostics(child);
+  child.stdout.write("secret=synthetic-token C:/private/fixture " + "x".repeat(100_000));
+  child.stderr.write("owner credential cannot use any reparse");
+  child.stderr.write(" or device; os error 10013; secret=synthetic-token");
+  assert.equal(diagnostics(), "exit_code=2; signal=null; diagnostics=owner credential cannot use any reparse or device | os error 10013");
+  child.stdout.end();
+  child.stderr.end();
   const root = await mkdtemp(join(tmpdir(), "respire-process-"));
   const owner = ownedProcess(process.execPath, ["-e", 'console.log("ready"); setInterval(() => {}, 1000)'], {
     cwd: root, env: isolatedEnv(root, 0, "unit-fixture-only"), stdio: ["pipe", "pipe", "pipe"]
@@ -37,17 +46,38 @@ test("Windows Runtime cleanup retries a sharing lock and reports a persistent lo
   {skip: process.platform !== "win32"}, async t => {
     const {spawn} = childProcess;
     let runtime;
+    let profile;
+    let earlyExit = true;
     const stub = t.mock.method(childProcess, "spawn", (binary, args, options) => {
       if (args[0] !== "serve") return spawn(binary, args, options);
-      runtime = spawn(binary, ["-e", "setInterval(() => {}, 1000)"], options);
+      profile = options.env.RSRS_DATA_DIR;
+      runtime = spawn(binary, ["-e", earlyExit ?
+        'console.error("secret=synthetic-token " + process.env.RSRS_DATA_DIR + " owner credential cannot use any reparse or device"); process.exitCode = 2' :
+        "setInterval(() => {}, 1000)"], options);
       return runtime;
     });
     syncBuiltinESMExports();
-    t.mock.method(globalThis, "fetch", async () => Response.json({pid: runtime.pid, status: "ready"}));
+    t.mock.method(globalThis, "fetch", async base => {
+      if (earlyExit) throw new Error("fetch failed", {cause: {code: "ECONNREFUSED"}});
+      await mkdir(join(profile, "runtime"), {recursive: true});
+      await writeFile(join(profile, "runtime", "endpoint.json"), JSON.stringify({
+        pid: runtime.pid, instance_id: "fixture", url: base.replace("/v1/health", "")
+      }));
+      return Response.json({status: "ready", instance_id: "fixture", capabilities: ["openapi.v1", "sse.operations.v1"]});
+    });
     t.after(() => {
       stub.mock.restore();
       syncBuiltinESMExports();
     });
+
+    await assert.rejects(withRuntime(process.execPath, undefined, async () => assert.fail("Must not run")), error => {
+      assert.match(error.message, /exit_code=2; signal=null/);
+      assert.match(error.message, /owner credential cannot use any reparse or device/);
+      assert(!error.message.includes(profile) && !error.message.includes("secret="));
+      assert.equal(error.cause, undefined);
+      return true;
+    });
+    earlyExit = false;
 
     for (const persistent of [false, true]) {
       let root;
@@ -133,17 +163,43 @@ test("readiness selects one route and requires its owned, ready health envelope"
   const pid = 123;
   const scope = {account_id: "synthetic", instance_id: "fixture", generation: 1};
   const legacy = {server: "respire", v: 1, pid, state: "ready", startup_complete: true, ...scope};
+  const profile = await mkdtemp(join(tmpdir(), "respire-readiness-"));
+  t.after(() => rm(profile, {recursive: true}));
+  await mkdir(join(profile, "runtime"));
+  const endpoint = {pid, instance_id: scope.instance_id, url: base};
+  const record = value => writeFile(join(profile, "runtime", "endpoint.json"), JSON.stringify(value));
+  await record(endpoint);
+  const modern = {status: "ready", instance_id: scope.instance_id, capabilities: ["openapi.v1", "sse.operations.v1"]};
   let reply;
   const fetch = t.mock.method(globalThis, "fetch", async () => reply);
   const probe = (status, data, releasedOld) => {
     reply = Response.json(data, {status});
-    return probeReadiness(base, pid, releasedOld);
+    return probeReadiness(base, pid, releasedOld, profile);
   };
 
   await assert.rejects(probe(404, {error: "unknown runtime endpoint"}), /Unexpected health response from \/v1\/health/);
   assert.deepEqual(fetch.mock.calls.map(call => call.arguments[0]), [base + "/v1/health"]);
   await assert.rejects(probe(200, legacy), /ready/);
-  assert.deepEqual(await probe(200, {pid, status: "ready"}), {pid, status: "ready"});
+  assert.deepEqual(await probe(200, modern), modern);
+  assert.equal(await probe(200, {...modern, status: "starting"}), undefined);
+  assert.equal(await probe(503, {error: "runtime_starting"}), undefined);
+  await assert.rejects(probe(200, {...modern, instance_id: " "}), /instance_id/);
+  for (const capabilities of [[], ["auth.handshake.v1"], ["auth.handshake.v1", "sse.operations.v1"]]) {
+    const partial = {...modern, capabilities};
+    assert.deepEqual(await probe(200, partial), partial);
+  }
+  for (const capabilities of [undefined, null, "openapi.v1 sse.operations.v1", {},
+    ["openapi.v1", "sse.operations.v1", 1], ["auth.handshake.v1", null]]) {
+    await assert.rejects(probe(200, {...modern, capabilities}), /capabilities must be an array of strings/);
+  }
+  for (const [field, value, message] of [["pid", pid + 1, /owned Runtime PID/],
+    ["instance_id", "other", /match the modern health/], ["url", "http://127.0.0.1:31338", /loopback URL/]]) {
+    await record({...endpoint, [field]: value});
+    await assert.rejects(probe(200, {...modern, pid}), message);
+  }
+  await rm(join(profile, "runtime", "endpoint.json"));
+  await assert.rejects(probe(200, {...modern, pid}), {code: "ENOENT"});
+  assert(fetch.mock.calls.every(call => call.arguments[0] === base + "/v1/health"));
 
   assert.deepEqual(await probe(200, legacy, true), legacy);
   assert.equal(fetch.mock.calls.at(-1).arguments[0], base + "/api/health");
@@ -155,24 +211,54 @@ test("readiness selects one route and requires its owned, ready health envelope"
   await assert.rejects(probe(200, {...legacy, state: "draining"}, true), /ready/);
 });
 
-test("released RPC uses the historical route and scopes only CLI dispatch", async t => {
-  const base = "http://127.0.0.1:31337";
+test("RPC routing stays deliberate and only cli.exec reads the verified legacy scope", async t => {
+  const base = "http://127.0.0.1:31337", pid = 123;
   const scope = {account_id: "synthetic", instance_id: "fixture", generation: 1};
-  const fetch = t.mock.method(globalThis, "fetch", async () => Response.json({}));
-  const send = (target, body) => target.request({method: "POST", path: "/rpc", body});
+  const ready = {server: "respire", v: 1, pid, state: "ready", startup_complete: true, ...scope};
+  let health = ready, statusCode = 200;
+  const fetch = t.mock.method(globalThis, "fetch", async url =>
+    Response.json(url === base + "/api/health" ? health : {}, {status: statusCode}));
+  const headers = {authorization: "Bearer synthetic-only"};
+  const send = (target, body, path = "/rpc") => target.request({method: "POST", path, body});
   const cli = {v: 1, id: "cli", method: "cli.exec", args: ["status", "--json"]};
   const status = {v: 1, id: "status", method: "runtime.status", args: []};
-  const legacy = httpTarget(base, {}, scope);
+  const catalog = {...status, id: "catalog", method: "model.catalog"};
+  const legacy = httpTarget(base, headers, scope);
+  const modern = httpTarget(base, headers, undefined, {pid, instance_id: scope.instance_id});
 
   await send(httpTarget(base), cli);
-  await send(legacy, cli);
-  await send(legacy, status);
+  for (const target of [legacy, modern]) {
+    await send(target, status);
+    await send(target, catalog);
+    await send(target, cli);
+  }
+  await send(modern, cli, "/v1/unrelated");
   assert(fetch.mock.calls.every(({arguments: [, options]}) => options.headers.connection === "close"));
-  assert.deepEqual(fetch.mock.calls.map(({arguments: [url, options]}) => [url, JSON.parse(options.body)]), [
+  const rpc = fetch.mock.calls.filter(({arguments: [, options]}) => options.body);
+  assert.deepEqual(rpc.map(({arguments: [url, options]}) => [url, JSON.parse(options.body)]), [
     [base + "/rpc", cli],
-    [base + "/api/rpc", {...cli, scope}],
-    [base + "/api/rpc", status]
+    [base + "/api/rpc", status], [base + "/api/rpc", catalog], [base + "/api/rpc", {...cli, scope}],
+    [base + "/rpc", status], [base + "/rpc", catalog], [base + "/rpc", {...cli, scope}],
+    [base + "/v1/unrelated", cli]
   ]);
+  assert(rpc.slice(1).every(({arguments: [, options]}) => options.headers.authorization === headers.authorization));
+  assert.equal(fetch.mock.calls.filter(({arguments: [url]}) => url.endsWith("/api/health")).length, 1);
+  assert.deepEqual(cli, {v: 1, id: "cli", method: "cli.exec", args: ["status", "--json"]});
+
+  for (const change of [{pid: pid + 1}, {instance_id: "other"}, {generation: 0},
+    {account_id: ""}, {server: "other"}, {v: 2}, {state: "locked"}, {startup_complete: false}]) {
+    health = {...ready, ...change};
+    const before = fetch.mock.callCount();
+    await assert.rejects(send(modern, cli), /owned Runtime PID|owned Runtime instance|scope|server|protocol|ready/);
+    assert.equal(fetch.mock.callCount(), before + 1, "Bad identity must not dispatch RPC");
+  }
+  health = ready;
+  for (const code of [404, 503]) {
+    statusCode = code;
+    const before = fetch.mock.callCount();
+    await assert.rejects(send(modern, cli), /Unexpected health response/);
+    assert.equal(fetch.mock.callCount(), before + 1, "Bad health must not dispatch RPC");
+  }
 });
 
 for (const scenario of await loadScenarios()) {
@@ -189,6 +275,31 @@ test("rejects prose assertions, unresolved references and missing declared fixtu
     method: "GET", path: "/v1/operations/\${missing}"
   }, expect: {status: 200}}]}, target), /Undefined variable missing/);
   await assert.rejects(runScenario({inputs: ["model"], steps: [{}]}, target), /Missing required input model/);
+});
+
+test("assertion diagnostics identify the rule and field without response or expected values", async () => {
+  const secret = "synthetic-private-value";
+  const cases = [
+    [{status: secret}, {status: 200}],
+    [{status: 200, media: secret}, {status: 200, media: "application/json"}],
+    [{status: 200, data: {field: secret}}, {status: 200, equal: {field: "expected-private-value"}}],
+    [{status: 200, data: {field: secret}}, {status: 200, different: {field: secret}}],
+    [{status: 200, data: {field: secret}}, {status: 200, matches: {field: "^expected-private-value$"}}],
+    [{status: 200, data: {field: secret}}, {status: 200, matches: {field: "expected-private-value["}}],
+    [{status: 200, data: {field: secret}}, {status: 200, oneOf: {field: ["expected-private-value"]}}],
+    [{status: 200, data: {field: [secret]}}, {status: 200, includes: {field: ["expected-private-value"]}}],
+    [{status: 200, data: {field: [secret]}}, {status: 200, excludes: {field: [secret]}}]
+  ];
+  for (const [response, expect] of cases) {
+    await assert.rejects(runScenario({steps: [{name: "Synthetic assertion",
+      request: {method: "GET", path: "/v1/health"}, expect}]}, {request: async () => response}), error => {
+      const diagnostic = inspect(error, {depth: 10});
+      assert(!diagnostic.includes(secret) && !diagnostic.includes("expected-private-value"),
+        "Assertion leaked a response or expected value");
+      assert.match(error.message, /^Synthetic assertion: (HTTP status|Response media type|field)/);
+      return true;
+    });
+  }
 });
 
 test("SSE parser handles split CRLF and UTF-8 and rejects incomplete events", async () => {
@@ -209,22 +320,27 @@ test("CARD-017 HTTP adapter round-trips a large nested UTF-8 note in process", a
     const response = await app.call(method, path, body);
     return {status: response.status, data: response.json()};
   }};
-  assert(await httpRoundTrip(target) > minimumBytes);
+  for (const locale of ["en", "zh"]) assert(await httpRoundTrip(target, locale) > minimumBytes);
   await httpBurst(target);
 });
 
 test("MCP builds one newline-delimited UTF-8 request and rejects corrupt responses", () => {
-  const original = payload("mcp");
-  const message = frame(1, "tools/call", {name: "memory_remember", arguments: original});
-  assert(message.length - 1 > minimumBytes);
-  const lines = message.toString("utf8").split("\n");
-  assert.equal(lines.length, 2);
-  assert.equal(lines[1], "");
-  exactBytes(JSON.parse(lines[0]).params.arguments.content, original.content);
-  assert.throws(() => exactBytes(original.content.slice(0, -1), original.content), /byte length changed/);
-  assert.throws(() => exactBytes(original.content.replace("card018", "card019"), original.content), /bytes changed/);
-  assert.throws(() => decodeResult('{"jsonrpc":"2.0","id":2,"result":{}}', 1));
-  assert.throws(() => decodeResult('{"jsonrpc":"2.0","id":1,"error":{"code":-32603}}', 1));
+  for (const locale of ["en", "zh"]) {
+    const original = payload("mcp", locale);
+    const message = frame(1, "tools/call", {name: "memory_remember", arguments: original});
+    assert(message.length - 1 > minimumBytes);
+    const lines = message.toString("utf8").split("\n");
+    assert.equal(lines.length, 2);
+    assert.equal(lines[1], "");
+    exactBytes(JSON.parse(lines[0]).params.arguments.content, original.content);
+    assert.throws(() => exactBytes(original.content.slice(0, -1), original.content), /byte length changed/);
+    assert.throws(() => exactBytes(original.content.replace("card018", "card019"), original.content), /bytes changed/);
+    assert.throws(() => decodeResult('{"jsonrpc":"2.0","id":2,"result":{}}', 1));
+    assert.throws(() => decodeResult('{"jsonrpc":"2.0","id":1,"error":{"code":-32603}}', 1),
+      /MCP JSON-RPC call failed/);
+    assert.throws(() => decodeResult("ITEM VALUE", 1), SyntaxError);
+  }
+  assert.throws(() => payload("mcp", "unsupported"), /Unsupported transport locale/);
 });
 
 test("isolated home, profile and binary directories resolve under a normal UTF-8 temp directory", async t => {
@@ -240,6 +356,50 @@ test("isolated home, profile and binary directories resolve under a normal UTF-8
     const child = relative(realRoot, await realpath(env[key]));
     assert(child.startsWith(directory + sep) || child === directory);
     assert(!isAbsolute(child));
+  }
+});
+
+test("MCP config canonicalization accepts only the same isolated owned root", async t => {
+  const root = await mkdtemp(join(tmpdir(), "respire card018 mcp "));
+  t.after(() => rm(root, {recursive: true}));
+  const env = isolatedEnv(root, 31337, "unit-fixture-only");
+  await mkdir(env.RSRS_DATA_DIR);
+  const before = {...env};
+  const runtime = {env, root, ownedRoot: root};
+  const cliEnv = await canonicalMcpEnv(runtime);
+  assert.notEqual(cliEnv, env);
+  assert.deepEqual(env, before);
+  const canonical = await realpath(root);
+  for (const [key, value] of Object.entries(env)) {
+    const expected = key === "RSRS_DATA_DIR" ? join(canonical, "profile") :
+      ["HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA",
+        "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_CONFIG_HOME", "XDG_RUNTIME_DIR"].includes(key) ?
+        canonical : value;
+    assert.equal(cliEnv[key], expected, key);
+  }
+  await assert.rejects(canonicalMcpEnv({...runtime, root: join(root, "unowned")}), /workspace must belong/);
+  for (const key of ["HOME", "USERPROFILE", "RSRS_DATA_DIR", "RSRS_BIN_DIR"]) {
+    await assert.rejects(canonicalMcpEnv({...runtime, env: {...env, [key]: tmpdir()}}),
+      /isolated fixture environment/);
+  }
+  await assert.rejects(canonicalMcpEnv({...runtime, env: {...env, UNTRUSTED: "value"}}),
+    /isolated fixture environment/);
+  const synthetic = {...env, RSRS_M3_DIR: join(root, "empty-models"), RSRS_NO_AUTOSYNC: "1"};
+  await mkdir(synthetic.RSRS_M3_DIR);
+  const syntheticBefore = {...synthetic};
+  const syntheticCli = await canonicalMcpEnv({...runtime, env: synthetic});
+  assert.equal(syntheticCli.RSRS_M3_DIR, synthetic.RSRS_M3_DIR);
+  assert.equal(syntheticCli.RSRS_NO_AUTOSYNC, "1");
+  assert.deepEqual(synthetic, syntheticBefore);
+  for (const extra of [{UNTRUSTED: "value"}, {RSRS_UNEXPECTED: "1"}, {RSRS_NO_AUTOSYNC: "0"},
+    {RSRS_M3_DIR: tmpdir()}, {RSRS_MCP_ALLOW: env.RSRS_MCP_ALLOW + ",memory_delete"}]) {
+    await assert.rejects(canonicalMcpEnv({...runtime, env: {...synthetic, ...extra}}),
+      /isolated fixture environment/);
+  }
+  for (const key of ["RSRS_M3_DIR", "RSRS_NO_AUTOSYNC"]) {
+    const partial = {...synthetic};
+    delete partial[key];
+    await assert.rejects(canonicalMcpEnv({...runtime, env: partial}), /isolated fixture environment/);
   }
 });
 
@@ -279,6 +439,79 @@ test("gallery cancellation holds the SSE stream open until DELETE and then close
   assert.equal(stream.ended, true);
   seen = await frames();
   assert.deepEqual(seen.slice(1), [{event: "cancelled", data: snapshot}]);
+});
+
+test("MCP three-tool fixture verifies full show and keeps shortened recall a strict failure", async t => {
+  const root = await mkdtemp(join(tmpdir(), "respire card018 mcp tools "));
+  t.after(() => rm(root, {recursive: true}));
+  const env = isolatedEnv(root, 31337, "unit-fixture-only");
+  await mkdir(env.RSRS_DATA_DIR);
+  env.RSRS_M3_DIR = join(root, "empty-models");
+  env.RSRS_NO_AUTOSYNC = "1";
+  await mkdir(env.RSRS_M3_DIR);
+  const runtime = {root, ownedRoot: root, env};
+  const script = String.raw`
+    const assert = require("node:assert/strict");
+    const {createInterface} = require("node:readline");
+    const mode = process.argv[1];
+    const names = ["memory_remember", "memory_recall", "memory_show"];
+    let entry, stage = 0;
+    createInterface({input: process.stdin}).on("line", line => {
+      const {id, method, params} = JSON.parse(line);
+      let result;
+      if (method === "initialize") result = {protocolVersion: params.protocolVersion, capabilities: {tools: {}}};
+      else if (method === "notifications/initialized") return;
+      else if (method === "tools/list") result = {tools: names.map(name => ({name}))};
+      else {
+        assert.equal(method, "tools/call");
+        const {name, arguments: args} = params;
+        assert.equal(name, ["memory_remember", "memory_show", "memory_recall"][stage++]);
+        let envelope;
+        if (name === "memory_remember") {
+          assert.equal(args.importance, "important");
+          entry = {...args, id: "synthetic-entry"};
+          assert(Buffer.byteLength(entry.content, "utf8") > 100 * 1024);
+          envelope = {command: "remember", status: "ok", summary: {id: entry.id}};
+        } else if (name === "memory_show") {
+          assert.deepEqual(args, {id: entry.id});
+          envelope = {command: "show", status: "ok", details: {
+            entry: {...entry, content: mode === "show-short" ? entry.content.slice(0, 100) : entry.content}
+          }};
+        } else {
+          assert.equal(args.query, entry.title);
+          envelope = {command: "recall", status: "ok", details: [{
+            entry: {...entry, id: mode === "recall-other" ? "different-entry" : entry.id,
+              content: mode === "recall-short" ? entry.content.slice(0, 100) : entry.content}
+          }]};
+        }
+        result = {isError: false, content: [{type: "text", text: JSON.stringify(envelope)}]};
+      }
+      process.stdout.write(JSON.stringify({jsonrpc: "2.0", id, result}) + "\n");
+    });
+  `;
+  const {spawn} = childProcess;
+  let mode;
+  const stub = t.mock.method(childProcess, "spawn", (binary, args, options) => {
+    assert.deepEqual(args, ["--client-only", "mcp"]);
+    assert.equal(options.cwd, root);
+    assert.equal(options.env.RSRS_DATA_DIR, join(canonicalRoot, "profile"));
+    assert.equal(options.env.RSRS_MCP_ALLOW, "memory_remember,memory_recall,memory_show");
+    return spawn(binary, ["-e", script, mode], options);
+  });
+  const canonicalRoot = await realpath(root);
+  syncBuiltinESMExports();
+  t.after(() => { stub.mock.restore(); syncBuiltinESMExports(); });
+  for (const locale of ["en", "zh"]) {
+    mode = "full";
+    assert(await mcpRoundTrip(process.execPath, runtime, locale) > minimumBytes);
+    mode = "recall-short";
+    await assert.rejects(mcpRoundTrip(process.execPath, runtime, locale),
+      /MCP recall UTF-8 length mismatch; truncation semantics UNCONFIRMED/);
+    mode = "recall-other";
+    await assert.rejects(mcpRoundTrip(process.execPath, runtime, locale), /Recall did not return the stored MCP memory ID/);
+    mode = "show-short";
+    await assert.rejects(mcpRoundTrip(process.execPath, runtime, locale), /UTF-8 byte length changed/);
+  }
 });
 
 test("bilingual layout fixtures match all 16 gallery headings and have complete catalogs", async () => {
