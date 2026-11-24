@@ -1,0 +1,17 @@
+{
+  "id": "E2E-006",
+  "title": "Legacy CLI status JSON and IDE inject help",
+  "target": "cli",
+  "steps": [
+    {
+      "name": "Read status through the legacy global JSON flag",
+      "cli": {"args": ["--json", "status"], "format": "json"},
+      "expect": {"exit": 0, "equal": {"command": "status", "status": "ok", "errors": []}}
+    },
+    {
+      "name": "Discover IDE inject without running it",
+      "cli": {"args": ["inject", "--help"], "format": "text"},
+      "expect": {"exit": 0, "matches": {"$": "^[ \\t]*Usage:[ \\t]+[^\\r\\n]*\\binject\\b"}}
+    }
+  ]
+}
