@@ -524,10 +524,24 @@ compiled Runtime integration require separate execution.
 | T05-04 legacy SQLite | [Released synthetic 1.x Golden and native app restore](fixtures/db/README.md) | The published marker 0, two synthetic encrypted rows, selected review/grant/query data and two pending sync operations are verified across upgrade and reopen. Broader audit histories are not asserted. |
 | T05-04 Vault | [Pinned synthetic Vault v1-v4 vectors](fixtures/crypto/README.md) | All eight compiled Windows Runtime cases passed wrong/correct unlock and exact UTF-8 legacy `show`. Native credential retrieval and vector-ranked recall are separate. |
 | T05-05 transport | Windows HTTP/MCP in an owned UTF-8 NTFS junction, byte-exact payloads and concurrent store/recall, MCP framing, junction target preserved | Native compiled Windows junction cases passed. Online inactive-model uninstall, OneDrive-specific paths and zero lingering Paused locks are not attested. |
-| T05-05 CLI and legacy RPC | Native production-binary E2E-006 and E2E-007 smoke cases | Scope is status JSON, inject help and the checked legacy RPC operations. Full CLI/TUI/IDE injection, model uninstall, and legacy model switch need separate real coverage. |
+| T05-05 CLI and legacy RPC | Native production-binary E2E-006 and E2E-007 smoke cases | Windows additionally exercises genuine scoped Codex injection and removal. Full CLI/TUI/other IDE coverage, model uninstall, and legacy model switch are still separate. |
 | T05-06 | Fixture validation and Playwright en/zh Mock Render (38 passed); compiled WebUI mode available | Compiled WebUI with the real catalogs needs a build fixture. Native Wails and cross-platform compiled Runtime integration belong to CARD-019. |
 
 The Change 005 Windows large-payload scenario maps to
 [windows.mjs](plugin-rpc/windows.mjs). Its legacy compatibility scenario is
 partially covered by the [smoke suite](cli-e2e/smoke.mjs). The prototype review
 and automated PR preview scenarios belong to CARD-017 and CARD-019.
+
+### Windows native Codex injection
+
+`node test-cases/cli-e2e/verify-inject-win.mjs <owned-temp-dir>
+<absolute-cli-exe> <lowercase-cli-sha256>` uses the compiled CLI in an isolated
+synthetic home and project. It checks real configuration insertion, managed
+block content, idempotent insertion and removal, preservation of project
+files, and no standalone Runtime launch. The existing CLI may leave two
+trailing LF bytes after removal; the probe reports this separately rather
+than asserting byte-exact restoration.
+
+A separate Windows pseudo-terminal check rendered the actual injection
+picker and exited cleanly on `q`, without writes in the isolated home. This is
+not an interactive write or general TUI/IDE parity check.
