@@ -1,0 +1,68 @@
+name: CARD-018 isolated tokenizer cancellation
+on:
+  pull_request:
+    branches: [main]
+    types: [labeled]
+permissions:
+  contents: read
+concurrency:
+  group: card018-tokenizer-single-qualification
+  cancel-in-progress: false
+jobs:
+  windows-real-download:
+    if: >-
+      github.repository == 'risense-ai/respire-resources' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'verify/card-018-tokenizer-cancel' &&
+      github.event.pull_request.draft == true &&
+      github.event.label.name == 'card018-tokenizer-proof' &&
+      github.run_attempt == 1
+    runs-on: windows-2025
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: "${{ github.event.pull_request.head.sha }}"
+          persist-credentials: false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: risense-ai/respire
+          ref: 505ecc4d3a4f6c67c6a35751ed3c467a337027e9
+          path: native-runtime
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Build exact locked Windows Runtime
+        id: build
+        shell: pwsh
+        env:
+          CARGO_TERM_COLOR: never
+          EXPECTED_QUALIFICATION_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          if ($env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or $env:RUNNER_OS -ne 'Windows' -or $env:RUNNER_ARCH -ne 'X64') { throw 'Unexpected runner' }
+          if ((git rev-parse HEAD) -cne $env:EXPECTED_QUALIFICATION_SHA) { throw 'Qualification source mismatch' }
+          if ((git -C native-runtime rev-parse HEAD) -cne '505ecc4d3a4f6c67c6a35751ed3c467a337027e9') { throw 'Runtime source mismatch' }
+          rustup toolchain install 1.95.0 --profile minimal
+          cargo +1.95.0 build --locked --manifest-path native-runtime/apps/runtime/Cargo.toml --target x86_64-pc-windows-msvc --target-dir (Join-Path $env:RUNNER_TEMP 'card018-download-target') -p respire_runtime --bin rsrs-runtime
+          $bin = Join-Path $env:RUNNER_TEMP 'card018-download-target/x86_64-pc-windows-msvc/debug/rsrs-runtime.exe'
+          $digest = (Get-FileHash -LiteralPath $bin -Algorithm SHA256).Hash.ToLowerInvariant()
+          "sha=$digest" >> $env:GITHUB_OUTPUT
+      - name: Single approved TLS HEAD and conditional cancellation attempts
+        shell: pwsh
+        env:
+          EXPECTED_RUNTIME_SHA: ${{ steps.build.outputs.sha }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          if ($env:GITHUB_RUN_ATTEMPT -ne '1') { throw 'Qualification retry disallowed' }
+          if ($env:EXPECTED_RUNTIME_SHA -cnotmatch '^[a-f0-9]{64}$') { throw 'Missing built Runtime digest' }
+          foreach ($entry in @(Get-ChildItem Env:)) {
+            if ($entry.Name -match '^(HF_|HUGGING_?FACE|HUGGINGFACE|HUGGING_FACE|RSRS_|OPENAI_|ANTHROPIC_|GITHUB_TOKEN$|GH_TOKEN$|HTTPS?_PROXY$|ALL_PROXY$|NODE_OPTIONS$|NODE_TLS_REJECT_UNAUTHORIZED$|NODE_EXTRA_CA_CERTS$|SSL_CERT_FILE$|SSL_CERT_DIR$)') {
+              Remove-Item -LiteralPath "Env:$($entry.Name)"
+            }
+          }
+          $bin = Join-Path $env:RUNNER_TEMP 'card018-download-target/x86_64-pc-windows-msvc/debug/rsrs-runtime.exe'
+          node test-cases/model-download-acceptance.mjs --hosted-acceptance --runtime-bin $bin --runtime-sha256 $env:EXPECTED_RUNTIME_SHA
