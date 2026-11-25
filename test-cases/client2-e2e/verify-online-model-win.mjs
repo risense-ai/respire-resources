@@ -125,6 +125,44 @@ export function adaptFixtureAcl(source) {
   return source;
 }
 
+
+export async function addModelReceiptDiagnostics(root) {
+  const file = await checkedPath(join(root, "apps", "client2", "internal", "host", "runtime_model_control.go"), false);
+  let source = await readFile(file, "utf8");
+  const once = (from, to) => {
+    assert(source.indexOf(from) >= 0 && source.indexOf(from) === source.lastIndexOf(from),
+      "Diagnostic fixture anchor changed");
+    source = source.replace(from, () => to);
+  };
+  once('\t"errors"\n', '\t"errors"\n\t"fmt"\n');
+  once('\t"strconv"\n', '\t"strconv"\n\t"strings"\n');
+  const old = ['\tif err := cmd.Run(); err != nil {',
+    '\t\treturn nil, errors.Join(errOnlineModelUnconfirmed, scope.Err())',
+    '\t}', '\treturn response.buffer.Bytes(), nil'].join("\n");
+  const lines = [
+    '\tvar diagnostic modelFixtureDiagnosticSink',
+    '\tcmd.Stderr = &diagnostic',
+    '\tif err := cmd.Run(); err != nil {',
+    '\t\texit, stage := -1, "unclassified"',
+    '\t\tvar child *exec.ExitError',
+    '\t\tif errors.As(err, &child) { exit = child.ExitCode() }',
+    '\t\tfor _, marker := range []string{"Runtime endpoint receipt is unavailable", "Runtime health is unavailable", "Runtime model owner credential is unavailable", "Runtime model proof unavailable", "invalid model transfer length", "private model frame"} {',
+    '\t\t\tif strings.Contains(diagnostic.String(), marker) { stage = marker; break }',
+    '\t\t}',
+    '\t\tfmt.Fprintf(os.Stderr, "fixture native model diagnostic: exit=%d deadline=%t stdout=%d stderr=%d class=%s\\n", exit, scope.Err() != nil, response.buffer.Len(), diagnostic.Len(), stage)',
+    '\t\treturn nil, errors.Join(errOnlineModelUnconfirmed, scope.Err())',
+    '\t}',
+    '\tvar wire struct { Status int `json:"http_status"`; Body struct { Code string `json:"code"` } `json:"body"` }',
+    '\tif json.Unmarshal(response.buffer.Bytes(), &wire) != nil { wire.Status = 0 }',
+    '\tcode := "unclassified"',
+    '\tswitch wire.Body.Code { case "managed_model_unavailable", "model_not_found", "model_in_use", "model_transfer_timeout", "native_model_control_required", "owner_control_busy": code = wire.Body.Code }',
+    '\tfmt.Fprintf(os.Stderr, "fixture native model diagnostic: status=%d code=%s stdout=%d\\n",wire.Status,code,response.buffer.Len())',
+    '\treturn response.buffer.Bytes(), nil'
+  ];
+  once(old, lines.join("\n"));
+  await writeFile(file, source + "\ntype modelFixtureDiagnosticSink struct { bytes.Buffer }\n\nfunc (sink *modelFixtureDiagnosticSink) Write(data []byte) (int, error) {\n\tkeep := 8192 - sink.Len()\n\tif keep > len(data) { keep = len(data) }\n\tif keep > 0 { _, _ = sink.Buffer.Write(data[:keep]) }\n\treturn len(data), nil\n}");
+}
+
 async function main(args) {
   assert.equal(process.platform, "win32", "T05-05 product adapter is Windows only");
   assert(process.env.CARD018_DISPOSABLE_MODEL_FIXTURE === "1", "Requires an approved disposable Windows fixture environment");
@@ -156,6 +194,8 @@ async function main(args) {
     // Adapt only the verified archive's test fixture; Runtime/Client2 product source is unchanged.
     const aclFixture = await checkedPath(join(source, "apps", "client2", "internal", "host", "runtime_real_model_windows_test.go"), false);
     await writeFile(aclFixture, adaptFixtureAcl(await readFile(aclFixture, "utf8")));
+    // Verification branch only: bounded diagnostic; never output model data or private headers.
+    await addModelReceiptDiagnostics(source);
     run("go", ["generate", "."], join(source, "packages", "runtime-sdk-go"), env);
     const output = run("go", ["test", "-mod=readonly", "-json", "-count=1", "-timeout=8m", "-run", "^" + testName + "$", "./internal/host"],
       join(source, "apps", "client2"), {...env, RESPIRE_TEST_REAL_RUNTIME: binary, RESPIRE_TEST_REAL_RUNTIME_VERSION: version,
