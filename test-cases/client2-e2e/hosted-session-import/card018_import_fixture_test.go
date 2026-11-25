@@ -142,6 +142,19 @@ func TestCard018ActualDesktopImportBoundary(t *testing.T) {
 			t.Fatal("browser probe failed")
 		}
 		t.Log("browser probe verified one native dry-run at two widths")
+		if os.Getenv("CARD018_PROVE_WORKSPACE_STATS") == "1" {
+			want := "PASS genuine Windows Workspace Stats " + locale + "; exact positive Runtime query-log total rendered."
+			found := 0
+			for _, line := range strings.Split(string(result.output), "\n") {
+				if strings.TrimSpace(line) == want {
+					found++
+				}
+			}
+			if found != 1 {
+				t.Fatal("missing unique Workspace Stats browser receipt")
+			}
+			t.Log("PASS Workspace Stats rendered owned Runtime query-log aggregate; no additional preview")
+		}
 	case <-readyCtx.Done():
 		t.Fatal("browser fixture did not report")
 	}

@@ -10,8 +10,9 @@ let phase='browser startup', issue='';
 try{
  const page=await browser.newPage({viewport:{width:1280,height:800},serviceWorkers:'block'});
  page.setDefaultTimeout(16000);
- let errors=0, previews=0;
+ let errors=0, previews=0, checkingStats=false;
  const reject=(kind)=>{errors++;if(!issue)issue=kind};
+ const statsReads=new Set();
  const submitted=new Map(), done=new Map(), allowedReads=new Set(['session_import_targets',
    'session_import_preview','query_log','model_profile_list','diary_list','organize_suggestions','capabilities','model_profiles']);
  page.on('console',m=>{if(m.type()==='error')reject('console error')});
@@ -26,7 +27,7 @@ try{
    }
    if(!['/api/execute','/api/operation'].includes(path))return;
    try{const j=(await r.json()).result;if(j && ['done','unconfirmed','failed'].includes(j.state) &&
-     ['session_import_targets','session_import_preview'].includes(j.name))done.set(j.id,j)}catch{reject('operation response decoding')}
+     ['session_import_targets','session_import_preview',...(checkingStats?['query_log']:[])].includes(j.name))done.set(j.id,j)}catch{reject('operation response decoding')}
  });
  await page.route('**/*',route=>{
    const req=route.request(),u=new URL(req.url());
@@ -38,7 +39,12 @@ try{
      if(!read&&!ack){reject('unexpected POST');return route.abort()}
      if(read){
        if(!/^desktop-[a-f0-9-]{36}$/.test(data?.id??'')){reject('unexpected operation ID');return route.abort()}
-       if(data.name==='session_import_preview')previews++;
+       if(data.name==='session_import_preview'&&(++previews!==1||checkingStats)){reject('additional preview');return route.abort()}
+       if(checkingStats&&data.name==='query_log'&&
+          (Object.keys(data.args??{}).length!==2||data.args.stats!==true||data.args.limit!==1)){
+         reject('invalid query-log read');return route.abort();
+       }
+       if(checkingStats&&data.name==='query_log')statsReads.add(data.id);
        submitted.set(data.id,data.name);
      }
    }
@@ -47,7 +53,7 @@ try{
  const terminal=async name=>{
    for(let i=0;i<600;i++){
      if(errors)throw Error('browser error before terminal receipt');
-     for(const [id,r] of done)if(submitted.get(id)===name){
+     for(const [id,r] of done)if(submitted.get(id)===name&&(name!=='query_log'||statsReads.has(id))){
        assert.equal(r.state,'done');assert.equal(r.name,name);
        assert.deepEqual(r.scope,expected.scope);
        assert.equal(r.runtimeOperationId,id);
@@ -106,6 +112,34 @@ try{
  assert.ok(await panel.getByText('codex:'+expected.id,{exact:true}).isVisible());
  assert.equal(previews,1);assert.equal(errors,0);
  console.log('PASS genuine Windows Session Import preview '+locale+'; one synthetic session, two viewport widths, no Apply.');
+ if(process.env.CARD018_PROVE_WORKSPACE_STATS==='1'){
+   phase='owned Workspace overview stats';
+   checkingStats=true;
+   await page.setViewportSize({width:1440,height:900});
+   const overview=await page.goto(url+'/workspace.html?card018=workspace-stats#overview');
+   assert.ok(overview.ok());
+   assert.equal(overview.headers()['x-card018-issuer'],(await ready).headers()['x-card018-issuer']);
+   assert.ok(overview.headers()['x-card018-issuer']);
+   const main=page.getByRole('main');
+   const title=main.getByRole('heading',{level:1});
+   await page.waitForFunction(locale=>{
+     const text=document.querySelector('main h1')?.textContent?.trim()??'';
+     return locale==='en'?text==='Memory, always ready.':/\p{Script=Han}/u.test(text);
+   },locale);
+   if(locale==='en')assert.equal(await title.innerText(),'Memory, always ready.');
+   else assert.match(await title.innerText(),/\p{Script=Han}/u);
+   const stats=await terminal('query_log');
+   assert.deepEqual({total:stats.details?.total,with_adopted:stats.details?.with_adopted},expected.stats);
+   const pane=main.locator('[data-overview-stats]');
+   const values=pane.locator('.metrics .metric > strong');
+   await values.nth(3).waitFor();
+   assert.equal(await values.count(),4);
+   assert.equal(await values.nth(2).innerText(),String(expected.stats.total));
+   assert.equal(await values.nth(3).innerText(),String(expected.stats.with_adopted));
+   assert.equal(await page.locator('html').getAttribute('lang'),locale==='zh'?'zh-CN':'en');
+   assert.equal(previews,1);assert.equal(errors,0);
+   console.log('PASS genuine Windows Workspace Stats '+locale+'; exact positive Runtime query-log total rendered.');
+ }
 }catch{
  console.error('FAIL: Session Import browser stage: '+phase+(issue?' ('+issue+')':''));
  process.exitCode=1;

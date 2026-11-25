@@ -325,6 +325,28 @@ async function smoke(binary, sha) {
       stage = 'single provider discovery gate';
       assertTargets(await targets(), codex);
       const groups = {id,witness,codex,file,cwd:root,scope};
+      const proveStats = process.env.CARD018_PROVE_WORKSPACE_STATS === '1';
+      const statsTotals = async () => {
+        const result = await command('query-log', ['--limit','1','--stats']);
+        assert.equal(result.status, 'ok');
+        return {total:result.details?.total, with_adopted:result.details?.with_adopted};
+      };
+      if (proveStats) {
+        stage = 'fresh scoped query-log baseline';
+        assert.deepEqual(await statsTotals(), {total:0, with_adopted:0});
+        stage = 'one isolated no-hit recall';
+        const recall = await command('recall', ['synthetic amber compass witness',
+          '--mode','fast','--intent','fact','--limit','1','--no-related']);
+        assert.equal(recall.status, 'skip');
+        assert.equal(recall.summary?.count, 0);
+        assert.equal(recall.summary?.recall_mode, 'fast');
+        assert.match(recall.summary?.query_log_id ?? '', /^[a-f0-9-]{36}$/);
+        stage = 'positive scoped query-log witness';
+        groups.stats = await statsTotals();
+        assert.deepEqual(groups.stats, {total:1, with_adopted:0});
+        assert.ok((await commandStatus()).summary?.local_alive === 0 && await revision() === beforeRevision
+          && !existsSync(cursor), 'recall changed memory, revision or import cursor');
+      }
       {
         const env = {...sandboxEnv, CARD018_LOCALE: locale, CARD018_RUNTIME_URL: endpoint,
           CARD018_RUNTIME_DATA: data, CARD018_RUNTIME_PID: String(child.pid),
@@ -333,6 +355,15 @@ async function smoke(binary, sha) {
           CARD018_CHROMIUM: process.env.CARD018_CHROMIUM,
           CARD018_PLAYWRIGHT_CORE: process.env.CARD018_PLAYWRIGHT_CORE};
         const exe = join(env.CARD018_SCRATCH, 'import-real.test.exe');
+        if (proveStats) {
+          stage = 'pinned Client2 hosted Workspace fixture identity';
+          const expectedDesktop = process.env.CARD018_EXPECTED_DESKTOP_SHA256 ?? '';
+          assert.match(expectedDesktop, /^[a-f0-9]{64}$/);
+          const executable = lstatSync(exe);
+          assert(executable.isFile() && !executable.isSymbolicLink() && executable.nlink === 1);
+          assert.equal(await binaryDigest(exe), expectedDesktop);
+          env.CARD018_PROVE_WORKSPACE_STATS = '1';
+        }
         stage = 'read-only real Wails browser probe';
         const probe = spawn(exe, ['-test.v','-test.run=^TestCard018ActualDesktopImportBoundary$','-test.timeout=35s'],
           {cwd:root,env,windowsHide:true,stdio:['ignore','inherit','inherit']});
@@ -342,6 +373,7 @@ async function smoke(binary, sha) {
         verifyOwnedFixture(root, codex, sessions, file);
         assert.ok((await commandStatus()).summary?.local_alive === 0 && await revision() === beforeRevision
           && !existsSync(cursor) && digest(readFileSync(file)) === digest(contents), 'read-only postcondition failed');
+        if (proveStats) assert.deepEqual(await statsTotals(), groups.stats, 'browser changed scoped query-log totals');
         if (status.code !== 0 || status.signal) viewFailures++;
       }
     } catch (error) {
