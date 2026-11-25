@@ -7,6 +7,8 @@ The reviewed minimum is the public surface of legacy CLI
 [`v1.0.21-dev.6` at `425f397db2a64347d3d27fa93db630fad6b9b520`](https://github.com/risense-ai/respire-cli/tree/425f397db2a64347d3d27fa93db630fad6b9b520).
 The manifest includes all 84 visible top-level names, selected nested command
 groups and compatibility-sensitive options, plus visible version/model aliases.
+Aliases are invoked with literal help-only arguments and must resolve to their
+canonical Usage topic, independent of whether a help annotation wraps.
 It does not require exact human prose, order, exclusivity or every option;
 new commands are allowed. Private bootstrap flags, environment variables,
 shell setup, and positional-argument semantics are not tested.

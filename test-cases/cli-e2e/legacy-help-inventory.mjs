@@ -12,18 +12,17 @@ const usage=/^Usage:[ \t]+/m;
 const commandRow=/^ {2}([a-z0-9]+(?:-[a-z0-9]+)*)(?:[ \t]+|$)/;
 const optionRow=/^[ \t]+(?:-[A-Za-z0-9],[ \t]+)?(--[a-z0-9]+(?:-[a-z0-9]+)*)(?=[ \t=,]|$)/;
 
-export function inspectHelp(raw, topic, {commands=[], aliases={}, options=[]}) {
+export function inspectHelp(raw, topic, {commands=[], options=[]}) {
   assert.ok(typeof raw==="string" && usage.test(raw), "missing Clap usage");
-  const names=new Map(), flags=new Set();
+  const names=new Set(), flags=new Set();
   let section;
   for(const line of raw.replace(/\r\n/g,"\n").split("\n")){
     if(/^[a-z][^:]*:$/i.test(line)){section=line;continue}
     if(section==="Commands:"){
       const m=commandRow.exec(line);
       if(!m)continue;
-      const advertised=line.match(/\[aliases?: ([^\]]+)\]/)?.[1]?.split(/,\s*/)??[];
       assert.ok(!names.has(m[1]),"duplicate help command: "+m[1]);
-      names.set(m[1],advertised);
+      names.add(m[1]);
     }
     if(section==="Options:" || section==="Global Options:"){
       const m=optionRow.exec(line);
@@ -31,8 +30,6 @@ export function inspectHelp(raw, topic, {commands=[], aliases={}, options=[]}) {
     }
   }
   for(const name of commands)assert.ok(names.has(name),"missing required command: "+name);
-  for(const [name,values] of Object.entries(aliases))
-    for(const alias of values)assert.ok(names.get(name)?.includes(alias),"missing required alias: "+name+" "+alias);
   for(const flag of options)assert.ok(flags.has(flag),"missing required option: "+flag);
   if(topic){
     const words=topic.split(" ");
@@ -47,16 +44,32 @@ export function helpCaseList(baseline=manifest){
   const topics=[...new Set(["",...Object.keys(baseline.groups),...Object.keys(baseline.options)])];
   for(const name of baseline.top)assert.ok(commandName.test(name),"invalid manifest name");
   assert.equal(new Set(baseline.top).size,baseline.top.length,"duplicate manifest name");
-  return topics.map(topic=>{
+  const cases=topics.map(topic=>{
     const words=topic?topic.split(" "):[];
     assert.ok(words.every(w=>commandName.test(w)) && (words.length===0||baseline.top.includes(words[0])), "invalid help topic");
     if(words.length>1)assert.ok(words.slice(1).every((w,i)=>baseline.groups[words.slice(0,i+1).join(" ")]?.includes(w)), "unknown nested help topic");
     return {topic,args:["--client-only",...words,"--help"], expectation:{
       commands:topic?baseline.groups[topic]:baseline.top,
-      aliases:topic?baseline.groupAliases[topic]:baseline.aliases,
       options:baseline.options[topic],
     }};
   });
+  // Resolve reviewed aliases by parsing a literal help-only invocation. Clap
+  // can wrap annotations independently of the command row, and its Usage
+  // names the canonical command after parsing the alias.
+  for(const [parent, aliases] of [["",baseline.aliases],...Object.entries(baseline.groupAliases)]){
+    const words=parent?parent.split(" "):[];
+    const allowed=parent?baseline.groups[parent]:baseline.top;
+    assert.ok(topics.includes(parent)&&allowed,"invalid alias group");
+    for(const [name, alternatives] of Object.entries(aliases)){
+      assert.ok(allowed.includes(name),"invalid alias target");
+      for(const alias of alternatives){
+        assert.ok(commandName.test(alias)&&!allowed.includes(alias),"invalid reviewed alias");
+        cases.push({topic:[...words,name].join(" "), invocation:[...words,alias].join(" "),
+          args:["--client-only",...words,alias,"--help"], expectation:{}});
+      }
+    }
+  }
+  return cases;
 }
 
 async function checksum(file){
@@ -97,11 +110,11 @@ async function main(args){
   assert.ok(beneath(scratch,root),"unexpected scratch redirection");
   try {
     const {env, paths}=isolatedEnvironment(root,executable);
-    for(const {topic,args,expectation} of helpCaseList()){
+    for(const {topic,invocation=topic,args,expectation} of helpCaseList()){
       const result=spawnSync(executable,args,{cwd:root,env,encoding:"utf8",stdio:["ignore","pipe","pipe"],
         shell:false,windowsHide:true,timeout:10000,maxBuffer:256*1024});
       assert.ok(!result.error && result.status===0 && !result.signal && !result.stderr,
-        "help command failed: "+(topic||"root"));
+        "help command failed: "+(invocation||"root"));
       inspectHelp(result.stdout,topic,expectation);
     }
     assert.deepEqual(readdirSync(root).sort(),Object.keys(paths).sort(),"help changed scratch layout");
