@@ -27,3 +27,21 @@ process identity. No personal data or unowned Runtime was used.
 
 This receipt does not establish full OpenAPI route parity, complete CLI
 or TUI behavior, online model uninstall, or packaged Client2 acceptance.
+
+## Strict native MCP content comparison, 2026-11-25
+
+The unchanged scope and strict content assertions ran in both real NTFS
+junction cases (English and Chinese) using Resources source
+6a5d1d87963f90f63e1c96ec8c4255942bef7ef5 with a scratch-only
+byte-count/hash probe. No shortened content was accepted. The compiled
+Windows x64 Runtime package came from Respire source
+52a16b769abdaea3573e52ded435a62a7b0c0165 with binary SHA-256
+c2fff54b77fa8bf635e02600db4d5fd515663f3e2498b1df4e130242c936c7b0;
+the CLI SHA is unchanged from above.
+
+Expected content, MCP show, MCP recall hit, and direct scoped legacy
+RPC recall were byte-identical for the same stored ID: 178,975 UTF-8
+bytes in English (SHA-256 c5e628c2433a4aaa59fc7b1ec893ee269673a2a4e56902f0201288900e2e6884)
+and 180,475 bytes in Chinese (SHA-256 c53475accfdc187b747a35a5f1cffa3934b830ff5afd1c53962355ef87ce65e4).
+Only synthetic content lengths and digests were reported. The extra
+typed recall probe did not locate that ID and is not part of this receipt.
