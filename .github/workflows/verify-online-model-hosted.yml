@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: risense-ai/respire
-          ref: 0d37248329500f4daadf70812882707a4a221147
+          ref: b2036da4db08141e11f3c24347ceeed92aa41015
           path: monorepo
           persist-credentials: false
       - uses: actions/setup-node@v4
@@ -32,7 +32,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $true
           if ($env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or $env:RUNNER_OS -ne 'Windows' -or $env:RUNNER_ARCH -ne 'X64') { throw 'Unexpected runner' }
-          if ((git -C monorepo rev-parse HEAD) -cne '0d37248329500f4daadf70812882707a4a221147') { throw 'Unexpected product source' }
+          if ((git -C monorepo rev-parse HEAD) -cne 'b2036da4db08141e11f3c24347ceeed92aa41015') { throw 'Unexpected product source' }
           rustup toolchain install 1.95.0 --profile minimal
           cargo +1.95.0 build --locked --manifest-path monorepo/apps/runtime/Cargo.toml --target-dir (Join-Path $env:RUNNER_TEMP 'model-target') -p respire_runtime --bin rsrs-runtime
           $cache = go env GOMODCACHE
@@ -68,4 +68,4 @@ jobs:
           $runtime = (Resolve-Path -LiteralPath (Join-Path $env:RUNNER_TEMP 'model-target/debug/rsrs-runtime.exe')).Path
           $hash = (Get-FileHash -LiteralPath $runtime).Hash.ToLowerInvariant()
           $repo = (Resolve-Path -LiteralPath 'monorepo').Path
-          node test-cases/client2-e2e/verify-online-model-win.mjs $repo 0d37248329500f4daadf70812882707a4a221147 $runtime $hash 2.0.0-dev.31 (Join-Path $env:RUNNER_TEMP 'small-model') (Join-Path $env:RUNNER_TEMP 'm3-model')
+          node test-cases/client2-e2e/verify-online-model-win.mjs $repo b2036da4db08141e11f3c24347ceeed92aa41015 $runtime $hash 2.0.0-dev.31 (Join-Path $env:RUNNER_TEMP 'small-model') (Join-Path $env:RUNNER_TEMP 'm3-model')
