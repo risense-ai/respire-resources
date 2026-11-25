@@ -74,11 +74,16 @@ try{
  await page.locator('[data-source=codex]:checked').waitFor();
  assert.equal(await page.locator('[data-source]:checked').count(),1);
 
- phase='read-only preview receipt';
+ phase='click the read-only preview';
  const control=page.locator('button[data-preview]');
  await control.click();
+ phase='read-only preview terminal operation';
  const receipt=await terminal('session_import_preview');
- assert.deepEqual(receipt.summary,{dry_run:true,scanned:1,pending:1,skipped_imported:0,deferred_by_limit:0,by_platform:[{id:'codex',count:1}]});
+ phase='exact read-only preview counters and no plugin events';
+ // The real cli.exec adapter always adds the captured plugin event array.
+ assert.deepEqual(receipt.summary,{dry_run:true,scanned:1,pending:1,skipped_imported:0,deferred_by_limit:0,
+   by_platform:[{id:'codex',count:1}],host_plugin_events:[]});
+ phase='exact synthetic preview row';
  assert.equal(receipt.details?.sessions?.length,1);
  const row=receipt.details.sessions[0];
  assert.equal(row.platform,'codex');assert.equal(row.id,expected.id);
