@@ -1,4 +1,4 @@
-name: CARD-018 Windows model admission diagnostic
+name: CARD-018 Windows online model compatibility
 
 on:
   push:
@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: risense-ai/respire
-          ref: b2036da4db08141e11f3c24347ceeed92aa41015
+          ref: d7ffd2d9d0cbacb1cae534a1208f3a49abd247f0
           path: monorepo
           persist-credentials: false
       - uses: actions/setup-node@v4
@@ -32,18 +32,18 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $true
           if ($env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or $env:RUNNER_OS -ne 'Windows' -or $env:RUNNER_ARCH -ne 'X64') { throw 'Unexpected runner' }
-          if ((git -C monorepo rev-parse HEAD) -cne 'b2036da4db08141e11f3c24347ceeed92aa41015') { throw 'Unexpected product source' }
+          if ((git -C monorepo rev-parse HEAD) -cne 'd7ffd2d9d0cbacb1cae534a1208f3a49abd247f0') { throw 'Unexpected product source' }
+          # Report only fixed booleans about the hosted worker token, never SIDs or account names.
+          $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+          try {
+            $admins = [Security.Principal.SecurityIdentifier]::new([Security.Principal.WellKnownSidType]::BuiltinAdministratorsSid, $null)
+            $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+            $adminEnabled = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+            $ownerDiffers = -not $identity.Owner.Equals($identity.User)
+            $ownerBuiltinAdmin = $identity.Owner.Equals($admins)
+            Write-Output "Hosted Windows token witness: admin_enabled=$adminEnabled owner_differs=$ownerDiffers owner_builtin_admin=$ownerBuiltinAdmin"
+          } finally { $identity.Dispose() }
           rustup toolchain install 1.95.0 --profile minimal
-          # Disposable diagnostic image only: label whether the server ever admitted the body.
-          $phaseFile = 'monorepo/apps/runtime/runtime/src/model_control/install_http.rs'
-          $utf8 = [Text.UTF8Encoding]::new($false)
-          $phaseSource = [IO.File]::ReadAllText((Resolve-Path -LiteralPath $phaseFile).Path).Replace([string][char]13, '')
-          $phaseHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($utf8.GetBytes($phaseSource)))
-          if ($phaseHash -cne 'A46172E8CB3BF0171E26A3425EBF6D30E0788CD37F23CF60CCC3FE0D9377E4FF') { throw 'Unexpected source for diagnostic instrumentation' }
-          $phaseAnchor = '    let admission = read_head(&mut wire)?;'
-          if ([regex]::Matches($phaseSource, [regex]::Escape($phaseAnchor)).Count -ne 1) { throw 'Diagnostic marker anchor changed' }
-          $phaseMarker = '    eprintln!("fixture ingress {}", if admission.status == 100 { "admitted" } else { "before-continue" });'
-          [IO.File]::WriteAllText((Resolve-Path -LiteralPath $phaseFile).Path, $phaseSource.Replace($phaseAnchor, $phaseAnchor + [char]10 + $phaseMarker), $utf8)
           cargo +1.95.0 build --locked --manifest-path monorepo/apps/runtime/Cargo.toml --target-dir (Join-Path $env:RUNNER_TEMP 'model-target') -p respire_runtime --bin rsrs-runtime
           $cache = go env GOMODCACHE
           "GOMODCACHE=$cache" >> $env:GITHUB_ENV
@@ -78,4 +78,4 @@ jobs:
           $runtime = (Resolve-Path -LiteralPath (Join-Path $env:RUNNER_TEMP 'model-target/debug/rsrs-runtime.exe')).Path
           $hash = (Get-FileHash -LiteralPath $runtime).Hash.ToLowerInvariant()
           $repo = (Resolve-Path -LiteralPath 'monorepo').Path
-          node test-cases/client2-e2e/verify-online-model-win.mjs $repo b2036da4db08141e11f3c24347ceeed92aa41015 $runtime $hash 2.0.0-dev.31 (Join-Path $env:RUNNER_TEMP 'small-model') (Join-Path $env:RUNNER_TEMP 'm3-model')
+          node test-cases/client2-e2e/verify-online-model-win.mjs $repo d7ffd2d9d0cbacb1cae534a1208f3a49abd247f0 $runtime $hash 2.0.0-dev.31 (Join-Path $env:RUNNER_TEMP 'small-model') (Join-Path $env:RUNNER_TEMP 'm3-model')
