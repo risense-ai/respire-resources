@@ -1,4 +1,4 @@
-name: CARD-018 Windows online model compatibility
+name: CARD-018 Windows model admission diagnostic
 
 on:
   push:
@@ -34,6 +34,16 @@ jobs:
           if ($env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or $env:RUNNER_OS -ne 'Windows' -or $env:RUNNER_ARCH -ne 'X64') { throw 'Unexpected runner' }
           if ((git -C monorepo rev-parse HEAD) -cne 'b2036da4db08141e11f3c24347ceeed92aa41015') { throw 'Unexpected product source' }
           rustup toolchain install 1.95.0 --profile minimal
+          # Disposable diagnostic image only: label whether the server ever admitted the body.
+          $phaseFile = 'monorepo/apps/runtime/runtime/src/model_control/install_http.rs'
+          $utf8 = [Text.UTF8Encoding]::new($false)
+          $phaseSource = [IO.File]::ReadAllText((Resolve-Path -LiteralPath $phaseFile).Path).Replace([string][char]13, '')
+          $phaseHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($utf8.GetBytes($phaseSource)))
+          if ($phaseHash -cne 'A46172E8CB3BF0171E26A3425EBF6D30E0788CD37F23CF60CCC3FE0D9377E4FF') { throw 'Unexpected source for diagnostic instrumentation' }
+          $phaseAnchor = '    let admission = read_head(&mut wire)?;'
+          if ([regex]::Matches($phaseSource, [regex]::Escape($phaseAnchor)).Count -ne 1) { throw 'Diagnostic marker anchor changed' }
+          $phaseMarker = '    eprintln!("fixture ingress {}", if admission.status == 100 { "admitted" } else { "before-continue" });'
+          [IO.File]::WriteAllText((Resolve-Path -LiteralPath $phaseFile).Path, $phaseSource.Replace($phaseAnchor, $phaseAnchor + [char]10 + $phaseMarker), $utf8)
           cargo +1.95.0 build --locked --manifest-path monorepo/apps/runtime/Cargo.toml --target-dir (Join-Path $env:RUNNER_TEMP 'model-target') -p respire_runtime --bin rsrs-runtime
           $cache = go env GOMODCACHE
           "GOMODCACHE=$cache" >> $env:GITHUB_ENV

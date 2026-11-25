@@ -154,9 +154,12 @@ export async function addModelReceiptDiagnostics(root) {
     '\t}',
     '\tvar wire struct { Status int `json:"http_status"`; Body struct { Code string `json:"code"` } `json:"body"` }',
     '\tif json.Unmarshal(response.buffer.Bytes(), &wire) != nil { wire.Status = 0 }',
+    '\tingress := "not-observed"',
+    '\tif strings.Contains(diagnostic.String(), "fixture ingress before-continue") { ingress = "before-continue" }',
+    '\tif strings.Contains(diagnostic.String(), "fixture ingress admitted") { ingress = "admitted" }',
     '\tcode := "unclassified"',
     '\tswitch wire.Body.Code { case "managed_model_unavailable", "model_not_found", "model_in_use", "model_transfer_timeout", "native_model_control_required", "owner_control_busy": code = wire.Body.Code }',
-    '\tfmt.Fprintf(os.Stderr, "fixture native model diagnostic: status=%d code=%s stdout=%d\\n",wire.Status,code,response.buffer.Len())',
+    '\tfmt.Fprintf(os.Stderr, "fixture native model diagnostic: status=%d code=%s stdout=%d ingress=%s\\n",wire.Status,code,response.buffer.Len(),ingress)',
     '\treturn response.buffer.Bytes(), nil'
   ];
   once(old, lines.join("\n"));
