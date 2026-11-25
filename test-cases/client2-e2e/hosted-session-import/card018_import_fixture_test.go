@@ -13,6 +13,7 @@ import (
 	"io/fs"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -78,7 +79,7 @@ func TestCard018ActualDesktopImportBoundary(t *testing.T) {
 	}
 	receipt := hex.EncodeToString(random[:])
 	d := &desktop{m: m}
-	realHandler := card018ImportPreviewGate(d.handler(http.FileServer(http.FS(assets))))
+	realHandler := card018ImportPreviewGate(d.handler(http.FileServer(http.FS(assets))), os.Getenv("CARD018_PROVE_QUICKPANEL") == "1")
 	app := application.New(application.Options{Name: "Respire isolated fixture", Assets: application.AssetOptions{
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("X-Card018-Issuer", receipt)
@@ -142,6 +143,19 @@ func TestCard018ActualDesktopImportBoundary(t *testing.T) {
 			t.Fatal("browser probe failed")
 		}
 		t.Log("browser probe verified one native dry-run at two widths")
+		if os.Getenv("CARD018_PROVE_QUICKPANEL") == "1" {
+			want := "PASS genuine Windows Quick Panel " + locale + "; exact Runtime instance, loaded synthetic account, matched display-only size receipt."
+			found := 0
+			for _, line := range strings.Split(string(result.output), "\n") {
+				if strings.TrimSpace(line) == want {
+					found++
+				}
+			}
+			if found != 1 {
+				t.Fatal("missing unique Quick Panel browser receipt")
+			}
+			t.Log("PASS Quick Panel loaded owned Runtime state; matched display-only size receipt and no additional preview")
+		}
 	case <-readyCtx.Done():
 		t.Fatal("browser fixture did not report")
 	}
@@ -151,7 +165,7 @@ var previewOperationID = regexp.MustCompile(`^desktop-[0-9a-f]{8}-[0-9a-f]{4}-4[
 
 // This test-only gate passes through accepted requests verbatim. It cannot
 // invoke product operations on its own or turn an unexpected request into success.
-func card018ImportPreviewGate(real http.Handler) http.Handler {
+func card018ImportPreviewGate(real http.Handler, proveQuick bool) http.Handler {
 	var mu sync.Mutex
 	seen := map[string]bool{}
 	previewCount := 0
@@ -181,6 +195,25 @@ func card018ImportPreviewGate(real http.Handler) http.Handler {
 				}
 			}
 			refuse()
+			return
+		}
+		if proveQuick && r.Method == http.MethodPost && r.URL.Path == "/api/panel-size" {
+			if r.URL.RawQuery != "" || r.Header.Get("X-Respire-Client") != "1" || r.Header.Get("Content-Type") != "application/json" {
+				refuse()
+				return
+			}
+			const maxPanelSizeBody = 128
+			b, err := io.ReadAll(io.LimitReader(r.Body, maxPanelSizeBody+1))
+			r.Body.Close()
+			var fields map[string]json.RawMessage
+			var height int
+			if err != nil || len(b) > maxPanelSizeBody || json.Unmarshal(b, &fields) != nil ||
+				len(fields) != 1 || json.Unmarshal(fields["height"], &height) != nil || height < 1 || height > 2000 {
+				refuse()
+				return
+			}
+			r.Body = io.NopCloser(bytes.NewReader(b))
+			real.ServeHTTP(w, r)
 			return
 		}
 		if r.Method != http.MethodPost || (r.URL.Path != "/api/execute" && r.URL.Path != "/api/operation-ack") ||
@@ -242,4 +275,44 @@ func card018ImportPreviewGate(real http.Handler) http.Handler {
 		r.Body = io.NopCloser(bytes.NewReader(b))
 		real.ServeHTTP(w, r)
 	})
+}
+
+func TestCard018QuickPanelFixtureReadOnlyGate(t *testing.T) {
+	for _, c := range []struct {
+		label, path, method, body, client string
+		optIn                             bool
+		want                              int
+	}{
+		{"enabled", "/api/panel-size", "POST", "{\"height\":550}", "1", true, 204},
+		{"disabled", "/api/panel-size", "POST", "{\"height\":550}", "1", false, 403},
+		{"bad-client", "/api/panel-size", "POST", "{\"height\":550}", "0", true, 403},
+		{"query", "/api/panel-size?other=1", "POST", "{\"height\":550}", "1", true, 403},
+		{"extra", "/api/panel-size", "POST", "{\"height\":550,\"extra\":1}", "1", true, 403},
+		{"wrong-type", "/api/panel-size", "POST", "{\"height\":\"550\"}", "1", true, 403},
+		{"outside-bound", "/api/panel-size", "POST", "{\"height\":2500}", "1", true, 403},
+		{"unchanged-block-mutation", "/api/execute", "POST", "{\"name\":\"logout\"}", "1", true, 403},
+		{"unchanged-read", "/api/state", "GET", "", "", true, 204},
+	} {
+		t.Run(c.label, func(t *testing.T) {
+			var forwarded int
+			gate := card018ImportPreviewGate(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				forwarded++
+				if r.Method == "POST" {
+					bytes, err := io.ReadAll(r.Body)
+					if err != nil || string(bytes) != c.body {
+						t.Fatalf("forwarding changed body: %v", err)
+					}
+				}
+				w.WriteHeader(204)
+			}), c.optIn)
+			in := httptest.NewRequest(c.method, c.path, strings.NewReader(c.body))
+			in.Header.Set("Content-Type", "application/json")
+			in.Header.Set("X-Respire-Client", c.client)
+			out := httptest.NewRecorder()
+			gate.ServeHTTP(out, in)
+			if got := out.Code; got != c.want || (got == 204 && forwarded != 1) || (got != 204 && forwarded != 0) {
+				t.Fatalf("code=%d forwarded=%d want=%d", got, forwarded, c.want)
+			}
+		})
+	}
 }

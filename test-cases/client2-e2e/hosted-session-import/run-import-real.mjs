@@ -333,6 +333,16 @@ async function smoke(binary, sha) {
           CARD018_CHROMIUM: process.env.CARD018_CHROMIUM,
           CARD018_PLAYWRIGHT_CORE: process.env.CARD018_PLAYWRIGHT_CORE};
         const exe = join(env.CARD018_SCRATCH, 'import-real.test.exe');
+        if (process.env.CARD018_PROVE_QUICKPANEL === '1') {
+          const expectedDesktop = process.env.CARD018_EXPECTED_DESKTOP_SHA256 ?? '';
+          stage = 'pinned Client2 hosted Quick Panel fixture identity';
+          assert.match(expectedDesktop, /^[a-f0-9]{64}$/);
+          const executable = lstatSync(exe);
+          assert(executable.isFile() && !executable.isSymbolicLink() && executable.nlink === 1);
+          assert.equal(await binaryDigest(exe), expectedDesktop);
+          env.CARD018_PROVE_QUICKPANEL = '1';
+          env.CARD018_SYNTHETIC_USER = fixture.session.user;
+        }
         stage = 'read-only real Wails browser probe';
         const probe = spawn(exe, ['-test.v','-test.run=^TestCard018ActualDesktopImportBoundary$','-test.timeout=35s'],
           {cwd:root,env,windowsHide:true,stdio:['ignore','inherit','inherit']});

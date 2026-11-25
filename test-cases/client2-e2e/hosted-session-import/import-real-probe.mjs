@@ -10,8 +10,9 @@ let phase='browser startup', issue='';
 try{
  const page=await browser.newPage({viewport:{width:1280,height:800},serviceWorkers:'block'});
  page.setDefaultTimeout(16000);
- let errors=0, previews=0;
+ let errors=0, previews=0, checkingPanel=false;
  const reject=(kind)=>{errors++;if(!issue)issue=kind};
+ const matchedSizing=new WeakMap();
  const submitted=new Map(), done=new Map(), allowedReads=new Set(['session_import_targets',
    'session_import_preview','query_log','model_profile_list','diary_list','organize_suggestions','capabilities','model_profiles']);
  page.on('console',m=>{if(m.type()==='error')reject('console error')});
@@ -35,10 +36,12 @@ try{
      let data;try{data=req.postDataJSON()}catch{reject('POST body decoding');return route.abort()}
      const read=u.pathname==='/api/execute'&&allowedReads.has(data?.name);
      const ack=u.pathname==='/api/operation-ack'&&submitted.has(data?.id);
-     if(!read&&!ack){reject('unexpected POST');return route.abort()}
+     const panelSizing=checkingPanel&&u.pathname==='/api/panel-size'&&data&&Object.keys(data).length===1&&Number.isSafeInteger(data.height)&&data.height>0&&data.height<=2000;
+     if(!read&&!ack&&!panelSizing){reject('unexpected POST');return route.abort()}
+     if(panelSizing)matchedSizing.set(req,data.height);
      if(read){
        if(!/^desktop-[a-f0-9-]{36}$/.test(data?.id??'')){reject('unexpected operation ID');return route.abort()}
-       if(data.name==='session_import_preview')previews++;
+       if(data.name==='session_import_preview'&&(++previews!==1||checkingPanel)){reject('additional preview');return route.abort()}
        submitted.set(data.id,data.name);
      }
    }
@@ -106,6 +109,41 @@ try{
  assert.ok(await panel.getByText('codex:'+expected.id,{exact:true}).isVisible());
  assert.equal(previews,1);assert.equal(errors,0);
  console.log('PASS genuine Windows Session Import preview '+locale+'; one synthetic session, two viewport widths, no Apply.');
+ if(process.env.CARD018_PROVE_QUICKPANEL==='1'){
+   phase='host-owned Quick Panel loaded status';
+   checkingPanel=true;
+   const sizing=page.waitForResponse(r=>r.url()===url+'/api/panel-size'&&
+     r.request().method()==='POST'&&matchedSizing.has(r.request())&&r.ok(),{timeout:8000});
+   await page.setViewportSize({width:560,height:520});
+   const [,sizingResponse]=await Promise.all([page.goto(url+'/quickpanel.html'),sizing]);
+   const sizingHeight=matchedSizing.get(sizingResponse.request());
+   const sizingReceipt=await sizingResponse.json();
+   assert.equal(sizingReceipt.ok,true);
+   assert.equal(sizingReceipt.result,Math.min(1100,Math.max(320,sizingHeight)));
+   const panel=page.locator('#qp-body');
+   const syntheticUser=process.env.CARD018_SYNTHETIC_USER;
+   assert.equal(syntheticUser,'runtime-smoke');
+   await panel.getByText(syntheticUser,{exact:true}).waitFor();
+   const live=await page.evaluate(async()=>{
+     const config=await fetch('/api/state').then(r=>r.json());
+     const status=await fetch('/api/runtime-status').then(r=>r.json());
+     return {status:status.ok, state:config.ok, connected:config.result.connected,
+       locale:config.result.preferences.language, pid:config.result.health.pid, instance:config.result.health.instance_id,
+       runtimeBin:config.result.health.bin, user:status.result.summary.session.user};
+   });
+   assert.deepEqual([live.status,live.state,live.connected],[true,true,true]);
+   assert.equal(live.locale,locale);
+   assert.equal(live.pid,Number(process.env.CARD018_RUNTIME_PID));
+   assert.equal(live.instance,expected.scope.instance_id);
+   assert.equal(live.user,syntheticUser);
+   await page.getByText('Runtime '+live.runtimeBin,{exact:true}).waitFor();
+   assert.equal(await page.locator('html').getAttribute('lang'),locale==='zh'?'zh-CN':'en');
+   assert.equal(await page.locator('#qp-refresh').innerText(),locale==='zh'?'\u5237\u65b0':'Refresh');
+   assert.deepEqual(await panel.evaluate(el=>({document:document.documentElement.scrollWidth<=innerWidth,
+     panel:el.scrollWidth<=el.clientWidth})),{document:true,panel:true});
+   assert.equal(previews,1);assert.equal(errors,0);
+   console.log('PASS genuine Windows Quick Panel '+locale+'; exact Runtime instance, loaded synthetic account, matched display-only size receipt.');
+ }
 }catch{
  console.error('FAIL: Session Import browser stage: '+phase+(issue?' ('+issue+')':''));
  process.exitCode=1;

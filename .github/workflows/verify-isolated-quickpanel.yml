@@ -1,0 +1,97 @@
+name: CARD-018 isolated Quick Panel qualification
+on:
+  pull_request:
+    branches: [main]
+    types: [labeled, synchronize, reopened]
+permissions:
+  contents: read
+jobs:
+  native-quickpanel:
+    if: >-
+      github.repository == 'risense-ai/respire-resources' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'verify/card-018-quickpanel' &&
+      github.event.pull_request.draft == true &&
+      contains(github.event.pull_request.labels.*.name, 'card018-quickpanel-proof')
+    runs-on: windows-2025
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: "${{ github.sha }}", persist-credentials: false}
+      - name: Checkout exact Runtime
+        uses: actions/checkout@v4
+        with:
+          repository: risense-ai/respire
+          ref: 1880a56bc549ad004ba36ccdf0f234bdbe883deb
+          path: native-runtime
+          persist-credentials: false
+      - name: Checkout exact Client2
+        uses: actions/checkout@v4
+        with:
+          repository: risense-ai/respire
+          ref: 1880a56bc549ad004ba36ccdf0f234bdbe883deb
+          path: native-client2
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with: {go-version-file: native-client2/apps/client2/go.mod, cache: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Build and independently pin the locked native candidates
+        id: candidates
+        shell: pwsh
+        env: {CARGO_TERM_COLOR: never, GOTOOLCHAIN: local, CGO_ENABLED: '0'}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          if ($env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or $env:RUNNER_OS -ne 'Windows' -or $env:RUNNER_ARCH -ne 'X64') { throw 'Unexpected runner' }
+          if ((git -C native-runtime rev-parse HEAD) -cne '1880a56bc549ad004ba36ccdf0f234bdbe883deb') { throw 'Pinned Runtime mismatch' }
+          if ((git -C native-client2 rev-parse HEAD) -cne '1880a56bc549ad004ba36ccdf0f234bdbe883deb') { throw 'Pinned Client2 mismatch' }
+          if ((git rev-parse HEAD) -cne $env:GITHUB_SHA) { throw 'Qualification checkout mismatch' }
+          rustup toolchain install 1.95.0 --profile minimal
+          cargo +1.95.0 build --locked --manifest-path native-runtime/apps/runtime/Cargo.toml --target x86_64-pc-windows-msvc --target-dir (Join-Path $env:RUNNER_TEMP 'card018-target') -p respire_runtime --bin rsrs-runtime
+          $harness = Join-Path $env:GITHUB_WORKSPACE 'test-cases/client2-e2e/hosted-session-import'
+          Copy-Item -LiteralPath (Join-Path $harness 'card018_import_fixture_test.go') -Destination 'native-client2/apps/client2/internal/desktop/card018_import_fixture_test.go'
+          Push-Location native-client2/packages/runtime-sdk-go
+          try { go generate ./... }
+          finally { Pop-Location }
+          Push-Location native-client2/apps/client2
+          try { go test -mod=readonly -tags 'server,production' -c -o (Join-Path $harness 'import-real.test.exe') ./internal/desktop }
+          finally { Pop-Location }
+          $runtime = Join-Path $env:RUNNER_TEMP 'card018-target/x86_64-pc-windows-msvc/debug/rsrs-runtime.exe'
+          $desktop = Join-Path $harness 'import-real.test.exe'
+          "runtime_sha=$((Get-FileHash -LiteralPath $runtime -Algorithm SHA256).Hash.ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          "desktop_sha=$((Get-FileHash -LiteralPath $desktop -Algorithm SHA256).Hash.ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+      - name: Fetch pinned browser tooling
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          $tools = Join-Path $env:RUNNER_TEMP 'card018-browser-tools'
+          [void](New-Item -ItemType Directory -Path $tools)
+          npm install --prefix $tools --no-audit --no-fund --ignore-scripts --save-exact playwright-core@1.56.1
+          $package = Join-Path $tools 'node_modules/playwright-core'
+          $env:PLAYWRIGHT_BROWSERS_PATH = Join-Path $tools 'browsers'
+          node (Join-Path $package 'cli.js') install chromium
+          $browser = Get-ChildItem -LiteralPath $env:PLAYWRIGHT_BROWSERS_PATH -Filter chrome.exe -File -Recurse | Select-Object -First 2
+          if (@($browser).Count -ne 1) { throw 'Expected exactly one Chromium executable' }
+          "CARD018_CHROMIUM=$($browser.FullName)" >> $env:GITHUB_ENV
+          "CARD018_PLAYWRIGHT_CORE=$package" >> $env:GITHUB_ENV
+      - name: Verify loaded Quick Panel for both locales with synthetic-only discovery
+        shell: pwsh
+        env:
+          CARD018_HOSTED_PREVIEW_ONLY: '1'
+          CARD018_PROVE_QUICKPANEL: '1'
+          CARD018_EXPECTED_DESKTOP_SHA256: ${{ steps.candidates.outputs.desktop_sha }}
+          CARD018_EXPECTED_RUNTIME_SHA256: ${{ steps.candidates.outputs.runtime_sha }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          $runtime = Join-Path $env:RUNNER_TEMP 'card018-target/x86_64-pc-windows-msvc/debug/rsrs-runtime.exe'
+          $digest = $env:CARD018_EXPECTED_RUNTIME_SHA256
+          if ($digest -cnotmatch '^[a-f0-9]{64}$' -or $env:CARD018_EXPECTED_DESKTOP_SHA256 -cnotmatch '^[a-f0-9]{64}$') { throw 'Missing trusted build pins' }
+          "Native Runtime SHA-256: $digest"
+          "Native Client2 fixture SHA-256: $env:CARD018_EXPECTED_DESKTOP_SHA256"
+          foreach ($locale in 'en','zh') {
+            $env:CARD018_BROWSER_LOCALE = $locale
+            node test-cases/client2-e2e/hosted-session-import/run-import-real.mjs --runtime $runtime --sha256 $digest
+          }
