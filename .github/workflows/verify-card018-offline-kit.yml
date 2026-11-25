@@ -1,0 +1,60 @@
+name: CARD-018 Windows offline kit build
+on:
+  pull_request:
+    branches: [main]
+    types: [labeled]
+permissions:
+  contents: read
+concurrency:
+  group: card018-offline-kit-build
+  cancel-in-progress: false
+jobs:
+  build-kit:
+    if: >-
+      github.repository == 'risense-ai/respire-resources' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'verify/card-018-offline-kit-build' &&
+      github.event.pull_request.draft == true &&
+      github.event.label.name == 'card018-compiled-client2-proof' &&
+      github.run_attempt == 1
+    runs-on: windows-2025
+    timeout-minutes: 55
+    env:
+      CARD018_FROZEN_HEAD: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: "${{ github.event.pull_request.head.sha }}"
+          persist-credentials: false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: risense-ai/respire
+          ref: 505ecc4d3a4f6c67c6a35751ed3c467a337027e9
+          path: exact-product
+          persist-credentials: false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: 1dc3b179f484c95a787f82ae5299fd562bc47f6a
+          path: exact-fixtures
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.22.3'
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: exact-product/apps/client2/go.mod
+          cache: false
+      - name: Verify kit manifest safety using synthetic test files
+        shell: pwsh
+        run: node --test test-cases/client2-e2e/offline-kit/offline-kit-verify.test.mjs
+      - name: Build pinned binaries and stage pinned browser; never launch them
+        id: kit
+        shell: pwsh
+        run: ./test-cases/client2-e2e/offline-kit/build-offline-kit.ps1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: card018-offline-kit-windows-x64
+          path: ${{ steps.kit.outputs.path }}
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
