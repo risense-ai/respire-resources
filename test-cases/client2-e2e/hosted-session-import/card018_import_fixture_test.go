@@ -165,6 +165,7 @@ var previewOperationID = regexp.MustCompile(`^desktop-[0-9a-f]{8}-[0-9a-f]{4}-4[
 // This test-only gate passes through accepted requests verbatim. It cannot
 // invoke product operations on its own or turn an unexpected request into success.
 func card018ImportPreviewGate(real http.Handler) http.Handler {
+	workspaceStats := os.Getenv("CARD018_PROVE_WORKSPACE_STATS") == "1"
 	var mu sync.Mutex
 	seen := map[string]bool{}
 	previewCount := 0
@@ -181,6 +182,14 @@ func card018ImportPreviewGate(real http.Handler) http.Handler {
 				return
 			}
 			switch r.URL.Path {
+			case "/api/inject-targets", "/api/model-profile-state":
+				mu.Lock()
+				ok := !denied && previewCount == 1 && workspaceStats && r.URL.RawQuery == "" && !r.URL.ForceQuery
+				mu.Unlock()
+				if ok {
+					real.ServeHTTP(w, r)
+					return
+				}
 			case "/api/state", "/api/runtime-status", "/api/operations", "/api/fonts":
 				real.ServeHTTP(w, r)
 				return
