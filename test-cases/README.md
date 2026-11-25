@@ -525,7 +525,7 @@ compiled Runtime integration require separate execution.
 | T05-04 Vault | [Pinned synthetic Vault v1-v4 vectors](fixtures/crypto/README.md) | All eight compiled Windows Runtime cases passed wrong/correct unlock and exact UTF-8 legacy `show`. Native credential retrieval and vector-ranked recall are separate. |
 | T05-05 transport | Windows HTTP/MCP in an owned UTF-8 NTFS junction, byte-exact payloads and concurrent store/recall, MCP framing, junction target preserved | Native compiled Windows junction cases passed. Online inactive-model uninstall, OneDrive-specific paths and zero lingering Paused locks are not attested. |
 | T05-05 CLI and legacy RPC | Native production-binary E2E-006 and E2E-007 smoke cases | Windows additionally exercises genuine scoped Codex injection and removal. Full CLI/TUI/other IDE coverage, model uninstall, and legacy model switch are still separate. |
-| T05-06 | Fixture validation and Playwright en/zh Mock Render (38 passed); compiled WebUI mode available | Compiled WebUI with the real catalogs needs a build fixture. Native Wails and cross-platform compiled Runtime integration belong to CARD-019. |
+| T05-06 | Fixture validation and Playwright en/zh Mock Render (38 passed); compiled WebUI mode available | [Hosted Windows Session Import preview](client2-e2e/session-import-hosted-evidence.md) passed using real Wails and Runtime. The general compiled fixture, native packaging, and cross-platform integration remain separate. |
 
 The Change 005 Windows large-payload scenario maps to
 [windows.mjs](plugin-rpc/windows.mjs). Its legacy compatibility scenario is
