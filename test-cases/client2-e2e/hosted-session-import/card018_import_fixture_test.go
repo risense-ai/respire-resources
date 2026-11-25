@@ -199,13 +199,14 @@ func card018ImportPreviewGate(real http.Handler) http.Handler {
 			Secret    string
 		}
 		if err != nil || len(b) > maxBytes || json.Unmarshal(b, &request) != nil || !previewOperationID.MatchString(request.ID) ||
-			request.Confirmed || request.Secret != "" {
+			request.Secret != "" {
 			refuse()
 			return
 		}
 		mu.Lock()
 		ok := !denied
 		if r.URL.Path == "/api/execute" {
+			// Client2 execute sets confirmed for reads too. Only these read specs can pass.
 			ok = ok && reads[request.Name] && !seen[request.ID] && len(seen) < 32
 			if request.Name == "session_import_preview" && ok {
 				var fields map[string]json.RawMessage
@@ -231,7 +232,7 @@ func card018ImportPreviewGate(real http.Handler) http.Handler {
 				discovered = discovered || request.Name == "session_import_targets"
 			}
 		} else {
-			ok = ok && seen[request.ID] && request.Name == ""
+			ok = ok && seen[request.ID] && request.Name == "" && !request.Confirmed
 		}
 		mu.Unlock()
 		if !ok {
