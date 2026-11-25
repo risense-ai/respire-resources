@@ -45,3 +45,15 @@ bytes in English (SHA-256 c5e628c2433a4aaa59fc7b1ec893ee269673a2a4e56902f0201288
 and 180,475 bytes in Chinese (SHA-256 c53475accfdc187b747a35a5f1cffa3934b830ff5afd1c53962355ef87ce65e4).
 Only synthetic content lengths and digests were reported. The extra
 typed recall probe did not locate that ID and is not part of this receipt.
+
+## Native switch-failure preservation, 2026-11-25
+
+The compiled, unmodified Windows Runtime source d7ffd2d9d0cbacb1cae534a1208f3a49abd247f0
+(binary SHA-256 31fa658072688ceb38bdad83471c71a7e6594ea59227b898c2e6b0dd20ad3d0f)
+was tested with owned synthetic Vault and pinned local M3 assets. The original
+immediate switch attempt after a write returned 409 model_switch_busy.
+A separate bounded attempt waited for that contention to finish. The same
+declared steps then received 202, canonical SSE failed, identical previous
+active assets, and successfully recalled the same seeded ID. Fixture cleanup
+completed. This verifies preservation when candidate assets are absent and fail
+verification, not post-load rollback or concurrent recalls during a switch.

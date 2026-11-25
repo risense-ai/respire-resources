@@ -19,7 +19,40 @@ function localPath(path) {
   return path;
 }
 
-export async function* sseFrames(body) {
+function compiledEvent(event, text) {
+  const value = JSON.parse(text);
+  // JSON.parse alone silently accepts duplicate keys. Reject them before
+  // interpreting an event's identity, state or failure details.
+  const objects = [];
+  for (const match of text.matchAll(/"(?:[^"\\]|\\[\s\S])*"|[{}\[\]]/g)) {
+    const token = match[0];
+    if (token === "{" || token === "[") objects.push(token === "{" ? new Set() : null);
+    else if (token === "}" || token === "]") objects.pop();
+    else if (/^\s*:/.test(text.slice(match.index + token.length))) {
+      const keys = objects.at(-1);
+      const key = JSON.parse(token);
+      assert(keys && !keys.has(key), "Duplicate compiled SSE JSON key");
+      keys.add(key);
+    }
+  }
+  const object = value => value !== null && typeof value === "object" && !Array.isArray(value);
+  assert(object(value) && Object.keys(value).length === 2 && Object.hasOwn(value, "event") &&
+    value.event === event && Object.hasOwn(value, "data") && object(value.data),
+  "Invalid compiled SSE operation envelope");
+  const {data} = value;
+  assert(typeof data.operation_id === "string" && data.operation_id.trim() &&
+    typeof data.kind === "string" && data.kind.trim() &&
+    (event === "progress" ? ["pending", "running"].includes(data.state) : data.state === event),
+  "Invalid compiled SSE operation status");
+  if (event === "failed") assert(object(data.error) &&
+    typeof data.error.type === "string" && data.error.type.trim() &&
+    typeof data.error.title === "string" && data.error.title.trim() &&
+    Number.isInteger(data.error.status) && data.error.status >= 400 && data.error.status <= 599,
+  "Invalid compiled SSE operation error");
+  return data;
+}
+
+export async function* sseFrames(body, {compiled = false} = {}) {
   const decoder = new TextDecoder("utf-8", {fatal: true});
   let buffer = "";
   let event;
@@ -37,18 +70,23 @@ export async function* sseFrames(body) {
       if (!line) {
         if (data.length) {
           assert(event === "progress" || terminal.has(event), "Invalid operation event " + event);
-          yield {event, data: JSON.parse(data.join("\n"))};
+          const text = data.join("\n");
+          yield {event, data: compiled ? compiledEvent(event, text) : JSON.parse(text)};
         }
+        if (compiled) assert(event === undefined || data.length, "Compiled SSE operation event lacks data");
         event = undefined;
         data = [];
-      } else if (line.startsWith("event:")) event = line.slice(6).replace(/^ /, "");
+      } else if (line.startsWith("event:")) {
+        if (compiled) assert(event === undefined, "Duplicate compiled SSE event field");
+        event = line.slice(6).replace(/^ /, "");
+      }
       else if (line.startsWith("data:")) data.push(line.slice(5).replace(/^ /, ""));
     }
   }
   for await (const chunk of body) yield* consume(decoder.decode(chunk, {stream: true}));
   const end = decoder.decode();
   yield* consume(end + (buffer.endsWith("\r") ? "\n" : ""));
-  assert(!buffer.trim() && !data.length, "Incomplete SSE frame");
+  assert(!buffer.trim() && !data.length && (!compiled || event === undefined), "Incomplete SSE frame");
 }
 
 export function httpTarget(base, headers = {}, releasedHealth, ownedIdentity) {
@@ -84,7 +122,7 @@ export function httpTarget(base, headers = {}, releasedHealth, ownedIdentity) {
         await response.body?.cancel();
         throw new Error("Expected HTTP 200 text/event-stream, received " + response.status);
       }
-      const frames = sseFrames(response.body);
+      const frames = sseFrames(response.body, {compiled: true});
       return {
         next: () => frames.next(),
         async return() {
