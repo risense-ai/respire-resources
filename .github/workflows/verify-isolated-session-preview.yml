@@ -42,6 +42,9 @@ jobs:
           cargo +1.95.0 build --locked --manifest-path native-runtime/apps/runtime/Cargo.toml --target x86_64-pc-windows-msvc --target-dir (Join-Path $env:RUNNER_TEMP 'card018-target') -p respire_runtime --bin rsrs-runtime
           $harness = Join-Path $env:GITHUB_WORKSPACE 'test-cases/client2-e2e/hosted-session-import'
           Copy-Item -LiteralPath (Join-Path $harness 'card018_import_fixture_test.go') -Destination 'native-client2/apps/client2/internal/desktop/card018_import_fixture_test.go'
+          Push-Location native-client2/packages/runtime-sdk-go
+          try { go generate ./... }
+          finally { Pop-Location }
           Push-Location native-client2/apps/client2
           try { go test -mod=readonly -tags 'server,production' -c -o (Join-Path $harness 'import-real.test.exe') ./internal/desktop }
           finally { Pop-Location }
