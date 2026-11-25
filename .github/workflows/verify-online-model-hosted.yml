@@ -1,0 +1,71 @@
+name: CARD-018 Windows online model compatibility
+
+on:
+  push:
+    branches: [verify/card-018-online-model]
+
+permissions:
+  contents: read
+
+jobs:
+  windows-model:
+    runs-on: windows-2025
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/checkout@v4
+        with:
+          repository: risense-ai/respire
+          ref: 0d37248329500f4daadf70812882707a4a221147
+          path: monorepo
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: monorepo/apps/client2/go.mod
+          cache: false
+      - name: Build pinned Runtime and preload pinned Go dependencies
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          if ($env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or $env:RUNNER_OS -ne 'Windows' -or $env:RUNNER_ARCH -ne 'X64') { throw 'Unexpected runner' }
+          if ((git -C monorepo rev-parse HEAD) -cne '0d37248329500f4daadf70812882707a4a221147') { throw 'Unexpected product source' }
+          rustup toolchain install 1.95.0 --profile minimal
+          cargo +1.95.0 build --locked --manifest-path monorepo/apps/runtime/Cargo.toml --target-dir (Join-Path $env:RUNNER_TEMP 'model-target') -p respire_runtime --bin rsrs-runtime
+          $cache = go env GOMODCACHE
+          "GOMODCACHE=$cache" >> $env:GITHUB_ENV
+          foreach ($dir in 'monorepo/packages/runtime-sdk-go','monorepo/apps/client2') {
+            Push-Location $dir
+            try { go mod download }
+            finally { Pop-Location }
+          }
+      - name: Stock the pinned public fixture assets
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          $assets = @(
+            @{dir='small-model';repo='Xenova/bge-small-zh-v1.5';rev='75c43b069aac4d136ba6bc1122f995fedcfd2781'},
+            @{dir='m3-model';repo='Xenova/bge-m3';rev='4de13258303883538bd53b696b452bf8099f0858'}
+          )
+          foreach ($a in $assets) {
+            $dir = Join-Path $env:RUNNER_TEMP $a.dir
+            [void](New-Item -ItemType Directory -Path $dir)
+            $base = 'https://huggingface.co/' + $a.repo + '/resolve/' + $a.rev + '/'
+            curl.exe --fail --silent --show-error --location --retry 2 ($base+'onnx/model_quantized.onnx') --output (Join-Path $dir 'model_quantized.onnx')
+            curl.exe --fail --silent --show-error --location --retry 2 ($base+'tokenizer.json') --output (Join-Path $dir 'tokenizer.json')
+          }
+      - name: Run the actual disposable Windows model test
+        shell: pwsh
+        env:
+          CARD018_DISPOSABLE_MODEL_FIXTURE: '1'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          $runtime = (Resolve-Path -LiteralPath (Join-Path $env:RUNNER_TEMP 'model-target/debug/rsrs-runtime.exe')).Path
+          $hash = (Get-FileHash -LiteralPath $runtime).Hash.ToLowerInvariant()
+          $repo = (Resolve-Path -LiteralPath 'monorepo').Path
+          node test-cases/client2-e2e/verify-online-model-win.mjs $repo 0d37248329500f4daadf70812882707a4a221147 $runtime $hash 2.0.0-dev.31 (Join-Path $env:RUNNER_TEMP 'small-model') (Join-Path $env:RUNNER_TEMP 'm3-model')
