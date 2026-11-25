@@ -8,7 +8,9 @@ import {promisify} from "node:util";
 
 // Mirrors monorepo apps/runtime/scripts/smoke-owner-handshake.mjs and
 // runtime-release-smoke-helpers.mjs. All keys and profile bytes are disposable.
-export async function prepareModernReady(root, env, token) {
+export async function prepareModernReady(root, env, token, {deviceLocal = false} = {}) {
+  assert(typeof deviceLocal === "boolean", "Invalid synthetic profile mode");
+  assert(!deviceLocal || (!env.RSRS_ADDR && !env.RSRS_TOKEN), "Device-local fixture cannot use a remote login");
   const profile = env.RSRS_DATA_DIR;
   if ((await readdir(profile)).length || (await readdir(root)).includes("empty-models")) {
     throw Object.assign(new Error("Synthetic ready fixture already exists; refusing setup before ACL changes"),
@@ -38,8 +40,8 @@ export async function prepareModernReady(root, env, token) {
   const kek = hkdfSync("sha256", entropy, salt, Buffer.from("onememory:kek:v4"), 32);
   const cipher = createCipheriv("aes-256-gcm", kek, nonce);
   const wrapped = Buffer.concat([cipher.update(randomBytes(32)), cipher.final(), cipher.getAuthTag()]);
-  const session = Buffer.from(JSON.stringify({user: "runtime-smoke", addr: "https://smoke.invalid", vault_version: 4,
-    kdf_salt: salt.toString("hex"), urk_nonce: nonce.toString("hex"), wrapped_urk: wrapped.toString("hex")}));
+  const session = Buffer.from(JSON.stringify({user: "runtime-smoke", ...(!deviceLocal && {addr: "https://smoke.invalid"}),
+    vault_version: 4, kdf_salt: salt.toString("hex"), urk_nonce: nonce.toString("hex"), wrapped_urk: wrapped.toString("hex")}));
   await mkdir(join(profile, "runtime"), {recursive: true, mode: 0o700});
   await writeFile(join(profile, "session.json"), session, {flag: "wx", mode: 0o600});
   await writeFile(join(profile, "runtime", "token"), token, {flag: "wx", mode: 0o600});

@@ -128,6 +128,46 @@ test("synthetic unlock binds the owned endpoint, locked generation and session b
   await assert.rejects(probeReadiness(base, pid, false, root), /must be ready/);
 });
 
+test("device-local synthetic ready omits remote login and preserves v4 unlock bytes", async t => {
+  const root = await mkdtemp(join(tmpdir(), "respire-synthetic-device-ready-"));
+  t.after(() => rm(root, {recursive: true}));
+  const env = isolatedEnv(root, 12345, "synthetic-local-token");
+  await mkdir(env.RSRS_DATA_DIR);
+  await assert.rejects(prepareModernReady(root, {...env, RSRS_ADDR: "https://smoke.invalid"},
+    "synthetic-local-token", {deviceLocal: true}), /cannot use a remote login/);
+  assert.deepEqual(await readdir(env.RSRS_DATA_DIR), []);
+  const fixture = await prepareModernReady(root, env, "synthetic-local-token", {deviceLocal: true});
+  const bytes = await readFile(join(env.RSRS_DATA_DIR, "session.json"));
+  const session = JSON.parse(bytes);
+  for (const key of ["addr", "token", "space", "space_session_id", "readonly"]) {
+    assert(!Object.hasOwn(session, key), "Device-local fixture contains " + key);
+  }
+  assert.equal(session.vault_version, 4);
+  assert(!bytes.includes(fixture.superPassword));
+  assert.equal(fixture.sessionSha256, createHash("sha256").update(bytes).digest("hex"));
+  const kek = hkdfSync("sha256", Buffer.from(fixture.superPassword.slice(3), "hex"),
+    Buffer.from(session.kdf_salt, "hex"), Buffer.from("onememory:kek:v4"), 32);
+  const wrapped = Buffer.from(session.wrapped_urk, "hex");
+  const decipher = createDecipheriv("aes-256-gcm", kek, Buffer.from(session.urk_nonce, "hex"));
+  decipher.setAuthTag(wrapped.subarray(-16));
+  assert.equal(Buffer.concat([decipher.update(wrapped.subarray(0, -16)), decipher.final()]).length, 32);
+  assert.equal(await readFile(join(env.RSRS_DATA_DIR, "runtime", "token"), "utf8"), "synthetic-local-token");
+  assert.equal(env.RSRS_NO_AUTOSYNC, "1");
+  await assert.rejects(prepareModernReady(root, env, "replacement", {deviceLocal: true}), {code: "EEXIST"});
+  assert.deepEqual(await readFile(join(env.RSRS_DATA_DIR, "session.json")), bytes);
+});
+
+test("device-local setup refuses released, supplied or non-synthetic profiles", async () => {
+  for (const [fixture, options] of [
+    [{syntheticReady: true}, {releasedOld: true}],
+    [{syntheticReady: true, profile: "unread-profile"}, {}],
+    [{}, {}],
+  ]) {
+    await assert.rejects(withRuntime(process.execPath, fixture, () => assert.fail("must not run"),
+      {...options, deviceLocal: true}), /requires an owned synthetic ready fixture/);
+  }
+});
+
 test("synthetic setup is opt-in and cannot modify released or supplied profiles", async () => {
   for (const options of [{releasedOld: true}, {}]) {
     await assert.rejects(withRuntime(process.execPath,

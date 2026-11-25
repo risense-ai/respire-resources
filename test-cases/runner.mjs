@@ -247,7 +247,8 @@ export async function main({legacyOnly = false} = {}) {
     try {
       if (values.mock) await runScenario(scenario, mockTarget(scenario.mock), scenario.mockInputs);
       else await withRuntime(runtimeBin, fixture, runtime => runScenario(scenario,
-        cli ? cliTarget(cliBin, runtime) : runtime.target, fixture?.inputs), {releasedOld});
+        cli ? cliTarget(cliBin, runtime) : runtime.target, fixture?.inputs),
+        {releasedOld, deviceLocal: !legacyOnly && scenario.id === "E2E-005" && fixture.syntheticReady === true});
       console.log("PASS " + label);
       passed++;
     } catch (error) {
