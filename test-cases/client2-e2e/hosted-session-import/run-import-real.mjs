@@ -284,7 +284,7 @@ async function smoke(binary, sha) {
     const ready = await health();
     assert.equal(ready.state, 'ready');
     for (const key of sameInstance) assert.equal(ready[key], locked[key], 'legacy identity changed');
-    let viewFailures = 0;
+    let viewFailureStage;
     const locale = process.env.CARD018_BROWSER_LOCALE;
     assert.ok(locale === 'en' || locale === 'zh', 'fixture requires explicit locale');
     try {
@@ -374,28 +374,42 @@ async function smoke(binary, sha) {
         assert.ok((await commandStatus()).summary?.local_alive === 0 && await revision() === beforeRevision
           && !existsSync(cursor) && digest(readFileSync(file)) === digest(contents), 'read-only postcondition failed');
         if (proveStats) assert.deepEqual(await statsTotals(), groups.stats, 'browser changed scoped query-log totals');
-        if (status.code !== 0 || status.signal) viewFailures++;
+        if (status.code !== 0 || status.signal) {
+          viewFailureStage = 'real Wails browser subprocess';
+          console.error('FAIL: Session Import stage: '+viewFailureStage);
+        }
       }
     } catch (error) {
-      console.error(error instanceof PrivacyGateError ? 'FAIL: discovery privacy gate' : 'FAIL: '+stage);
-      viewFailures++;
+      viewFailureStage = error instanceof PrivacyGateError ? 'discovery privacy gate' : stage;
+      console.error('FAIL: Session Import stage: '+viewFailureStage);
     }
 
-    stage = 'scoped Runtime drain';
+    stage = 'scoped Runtime stop request';
     const identity = Object.fromEntries(['installation_id', 'instance_id', 'account_id', 'generation']
       .map(key => [key, ready[key]]));
     const response = await call('/api/runtime/stop', {method: 'POST', body: identity,
       headers: {'X-Respire-Lifecycle': 'coordinator-v1'}});
+    stage = 'scoped Runtime stop response';
+    if (response.status !== 200) console.error('Runtime stop HTTP status: '+response.status);
     const accepted = await requireStatus(response, 200, 'scoped standalone stop');
     assert.ok(accepted.ok === true && accepted.state === 'accepted', 'scoped stop not accepted');
+    stage = 'owned Runtime exit after stop acceptance';
     const result = await Promise.race([closed, delay(35000, null, {ref: false})]);
+    if (!result) console.error('Runtime stop exit classification: timeout');
+    else if (Number.isInteger(result.code) && result.code !== 0) console.error('Runtime stop exit code: '+result.code);
+    else if (result.signal) console.error('Runtime stop exit classification: signalled');
     assert.ok(result?.code === 0 && result.signal === null, 'Runtime did not cleanly exit');
+    stage = 'owned Runtime stop receipt';
     assertDrained(fileJson(join(runtimeDir, 'stop-' + ready.instance_id + '.json'), 1 << 20),
       ready, accepted.operation_id);
+    stage = 'owned Runtime credential retirement';
     assert.ok(!existsSync(join(runtimeDir, '.owner-credentials-' + ready.instance_id, 'secret')),
       'stop did not remove the retired owner credential');
     console.log('Exact owned Runtime cleanly drained.');
-    assert.equal(viewFailures, 0, 'isolated Session Import preview did not pass');
+    if (viewFailureStage) {
+      stage = viewFailureStage;
+      throw new Error('isolated browser fixture did not pass');
+    }
   } catch (error) {
     if (!startupVerified && child) {
       if (ended) await Promise.race([closed, delay(500, null, {ref:false})]);

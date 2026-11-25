@@ -93,8 +93,16 @@ jobs:
           "Native Client2 fixture SHA-256: $env:CARD018_EXPECTED_DESKTOP_SHA256"
           foreach ($locale in 'en','zh') {
             $env:CARD018_BROWSER_LOCALE = $locale
-            $lines = @(node test-cases/client2-e2e/hosted-session-import/run-import-real.mjs --runtime $runtime --sha256 $digest)
-            $lines | Write-Output
+            $nativePreference = $PSNativeCommandUseErrorActionPreference
+            try {
+              $PSNativeCommandUseErrorActionPreference = $false
+              $lines = @(node test-cases/client2-e2e/hosted-session-import/run-import-real.mjs --runtime $runtime --sha256 $digest 2>&1 |
+                ForEach-Object { $line = [string]$_; Write-Host $line; $line })
+              $nativeExit = $LASTEXITCODE
+            } finally {
+              $PSNativeCommandUseErrorActionPreference = $nativePreference
+            }
+            if ($nativeExit -ne 0) { throw "Isolated Workspace Stats harness failed for $locale (exit $nativeExit)" }
             $receipts = @($lines | Where-Object {
               $_ -cmatch '^\s+card018_import_fixture_test\.go:\d+: PASS Workspace Stats rendered owned Runtime query-log aggregate; no additional preview$'
             })
