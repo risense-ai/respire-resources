@@ -569,3 +569,48 @@ test("scenario space discovery uses authenticated status even if public health o
   });
   await assert.rejects(runScenario(health, changedInstance), /instance_id/);
 });
+
+test("model switch ignores initial Pending but requires matching Running progress and snapshot", async () => {
+  const scenario = (await loadScenarios()).find(({id}) => id === "E2E-003");
+  const run = mode => {
+    const target = mockTarget(scenario.mock);
+    return runScenario(scenario, {
+      ...target,
+      async request(input) {
+        const response = await target.request(input);
+        if (input.method === "GET" && input.path.startsWith("/v1/operations/")) {
+          if (mode === "wrong-snapshot-id") response.data = {...response.data, operation_id: "wrong"};
+          if (mode === "completed-snapshot") response.data = {...response.data, state: "completed"};
+        }
+        return response;
+      },
+      async subscribe(path) {
+        const frames = await target.subscribe(path);
+        return (async function* () {
+          try {
+            const initial = await frames.next();
+            assert.equal(initial.value.data.progress_percent, 0);
+            yield {event: "progress", data: {...initial.value.data, state: "pending", progress_percent: null}};
+            yield initial.value;
+            let positiveSeen = false;
+            for await (const frame of frames) {
+              if (!positiveSeen && frame.event === "progress" && frame.data.progress_percent > 0) {
+                positiveSeen = true;
+                if (mode === "wrong-stream-id") frame.data = {...frame.data, operation_id: "wrong"};
+                if (mode === "positive-pending") frame.data = {...frame.data, state: "pending"};
+              }
+              yield frame;
+            }
+          } finally {
+            await frames.return();
+          }
+        })();
+      }
+    }, scenario.mockInputs);
+  };
+  await run("correct");
+  await assert.rejects(run("wrong-stream-id"), /Observe in-flight switch: operation_id equality mismatch/);
+  await assert.rejects(run("positive-pending"), /Observe in-flight switch: state equality mismatch/);
+  await assert.rejects(run("wrong-snapshot-id"), /still in flight after recall returned: operation_id equality mismatch/);
+  await assert.rejects(run("completed-snapshot"), /still in flight after recall returned: state equality mismatch/);
+});

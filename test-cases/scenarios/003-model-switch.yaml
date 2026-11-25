@@ -75,7 +75,8 @@
       "name": "Observe in-flight switch",
       "event": {
         "stream": "switchEvents",
-        "name": "progress"
+        "name": "progress",
+        "above": {"progress_percent": 0}
       },
       "expect": {
         "equal": {
@@ -130,6 +131,7 @@
       "expect": {
         "status": 200,
         "equal": {
+          "operation_id": "${operation}",
           "state": "running"
         }
       }
