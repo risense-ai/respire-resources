@@ -21,3 +21,5 @@ product test executes. The currently recorded adapter launch did not get past
 native listener process ownership on the restricted machine; no uninstall
 validation is claimed for that run. Positive Windows configured junction
 behavior and zero lingering Paused markers require their own assertions.
+
+The isolated test copy adapts its PowerShell ACL provider path to the equivalent local DOS alias and verifies the owner ACL. The real Runtime and Client2 production files in the source archive are not modified.

@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import {createHash} from "node:crypto";
 import {createReadStream} from "node:fs";
-import {lstat, mkdtemp, mkdir, realpath, rm} from "node:fs/promises";
+import {lstat, mkdtemp, mkdir, readFile, realpath, rm, writeFile} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import {dirname, isAbsolute, join, resolve} from "node:path";
 import {spawnSync} from "node:child_process";
@@ -76,6 +76,55 @@ function cleanEnv(temp) {
     GOENV: "off", GOTOOLCHAIN: "local", GOPROXY: "off", GOSUMDB: "off", GOWORK: "off", GIT_CONFIG_NOSYSTEM: "1"};
 }
 
+
+export function adaptFixtureAcl(source) {
+  const replaceOnce = (from, to) => {
+    assert(source.indexOf(from) >= 0 && source.indexOf(from) === source.lastIndexOf(from),
+      "Checked-in Windows fixture no longer matches the reviewed ACL setup");
+    source = source.replace(from, () => to);
+  };
+  const nl = String.fromCharCode(10);
+  const helper = ['\tprotect := func(path string) {', '\t\tt.Helper();'].join(nl);
+  // The original test has one helper. Match its exact source, not its behavior.
+  const start = helper.replace(';', '');
+  const indent = '\t\t';
+  replaceOnce(start, [
+    '\tprotect := func(path string) {',
+    indent+'t.Helper()',
+    indent+'canonical, err := canonicalSessionDirectory(path)',
+    indent+'if err != nil {',
+    indent+'\tt.Fatal("cannot resolve owned ACL fixture")',
+    indent+'}',
+    indent+'provider := windowsDOSPath(canonical)',
+    indent+'if len(provider) < 3 || !filepath.IsAbs(provider) || provider[1] != 58 || provider[2] != 92 {',
+    indent+'\tt.Fatal("ACL fixture must be on a local Windows drive")',
+    indent+'}',
+    indent+'roundtrip, err := canonicalSessionDirectory(provider)',
+    indent+'before, statErr := os.Stat(provider)',
+    indent+'if err != nil || statErr != nil || roundtrip != canonical || !before.IsDir() {',
+    indent+'\tt.Fatal("ACL provider alias changed fixture identity")',
+    indent+'}'
+  ].join(nl));
+  replaceOnce('"RESPIRE_MODEL_TEST_ROOT=" + path}', '"RESPIRE_MODEL_TEST_ROOT=" + provider}');
+  replaceOnce("c, cancel := context.WithTimeout(ctx, 10*time.Second)",
+    "c, cancel := context.WithTimeout(ctx, 45*time.Second)");
+  replaceOnce('t.Fatalf("setting the synthetic directory DACL failed: %v: %s", err, output)\n\t\t}',
+    't.Fatalf("setting the synthetic directory DACL failed (context %v): %v: %s", c.Err(), err, output)\n\t\t}\n'+[
+      indent+'afterPath, err := canonicalSessionDirectory(provider)',
+      indent+'after, statErr := os.Stat(provider)',
+      indent+'if err != nil || statErr != nil || afterPath != canonical || !os.SameFile(before, after) {',
+      indent+'\tt.Fatal("ownership setup changed the selected fixture directory")',
+      indent+'}'
+    ].join(nl));
+  replaceOnce('"Set-Acl -LiteralPath $env:RESPIRE_MODEL_TEST_ROOT -AclObject $acl"',
+    '"try { Set-Acl -LiteralPath $env:RESPIRE_MODEL_TEST_ROOT -AclObject $acl;" +' + nl +
+    '\t\t\t"$actual = Get-Acl -LiteralPath $env:RESPIRE_MODEL_TEST_ROOT;" +' + nl +
+    '\t\t\t"$rules = @($actual.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier]));" +' + nl +
+    '\t\t\t"if (!$actual.AreAccessRulesProtected -or $actual.GetOwner([Security.Principal.SecurityIdentifier]).Value -ne $owner.Value -or $rules.Count -ne 1 -or $rules[0].IdentityReference.Value -ne $owner.Value -or $rules[0].IsInherited -or $rules[0].AccessControlType -ne \'Allow\' -or $rules[0].FileSystemRights -ne \'FullControl\' -or [int]$rules[0].InheritanceFlags -ne 3 -or [int]$rules[0].PropagationFlags -ne 0) { throw \'owner ACL mismatch\' }" +' + nl +
+    '\t\t\t"} catch { [Console]::Error.WriteLine(\'synthetic ACL setup failed: \' + $_.CategoryInfo.Category + \' / \' + $_.Exception.HResult); exit 1 }"');
+  return source;
+}
+
 async function main(args) {
   assert.equal(process.platform, "win32", "T05-05 product adapter is Windows only");
   assert(process.env.CARD018_DISPOSABLE_MODEL_FIXTURE === "1", "Requires an approved disposable Windows fixture environment");
@@ -104,6 +153,9 @@ async function main(args) {
     const source = join(scratch, "source");
     await mkdir(source);
     run("tar", ["-xf", archive, "-C", source], scratch, env);
+    // Adapt only the verified archive's test fixture; Runtime/Client2 product source is unchanged.
+    const aclFixture = await checkedPath(join(source, "apps", "client2", "internal", "host", "runtime_real_model_windows_test.go"), false);
+    await writeFile(aclFixture, adaptFixtureAcl(await readFile(aclFixture, "utf8")));
     run("go", ["generate", "."], join(source, "packages", "runtime-sdk-go"), env);
     const output = run("go", ["test", "-mod=readonly", "-json", "-count=1", "-timeout=8m", "-run", "^" + testName + "$", "./internal/host"],
       join(source, "apps", "client2"), {...env, RESPIRE_TEST_REAL_RUNTIME: binary, RESPIRE_TEST_REAL_RUNTIME_VERSION: version,
