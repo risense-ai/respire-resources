@@ -16,6 +16,8 @@ import {PrivacyGateError, assertTargets} from './discovery-gate.mjs';
 
 
 let stage = 'hosted-runner guard';
+const STARTUP_MAX_STDERR = 4096;
+const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const sameInstance = ['pid', 'instance_id', 'process_start_id', 'image_sha256'];
 async function binaryDigest(file) {
   const hash = createHash('sha256');
@@ -130,13 +132,52 @@ async function requireStatus(response, status, label) {
   try { return await response.json(); } catch { throw new Error('invalid JSON response: ' + label); }
 }
 
+function startupHint(error, outcome, sample) {
+  const spawnCodes = new Set(['ENOENT','EACCES','EPERM','EINVAL','UNKNOWN']);
+  if (error) return spawnCodes.has(error.code) ? 'spawn-' + error.code.toLowerCase() : 'spawn-other';
+  if (outcome?.code != null) {
+    const native = new Map([[0xc0000135,'windows-loader-dll-not-found'],[0xc0000139,'windows-loader-entrypoint-missing'],
+      [0xc000007b,'windows-loader-image-format'],[0xc0000142,'windows-loader-init-failed'],
+      [0xc0000005,'windows-native-access-violation']]);
+    const code = native.get(outcome.code >>> 0);
+    if (code) return code;
+  }
+  const rules = [
+    [/failed to bind local runtime at/i,'runtime-listener-bind-failed'],
+    [/endpoint changed before publication|endpoint instance missing|invalid endpoint instance/i,'runtime-endpoint-publish-failed'],
+    [/access is denied|permission denied|os error 5\b/i,'runtime-access-denied'],
+    [/thread [^\n]{0,80} panicked at/i,'runtime-panic'],
+    [/rsrs-runtime:/i,'runtime-returned-error'],
+  ];
+  const stderr = sample.toString('utf8');
+  for (const [pattern, code] of rules) if (pattern.test(stderr)) return code;
+  if (outcome?.signal) return 'runtime-signalled';
+  if (outcome?.code === 0) return 'runtime-exited-zero';
+  if (outcome?.code === 2) return 'runtime-exited-2';
+  return outcome ? 'runtime-exited-other' : 'no-classified-stderr';
+}
+
+function startupFailure(rule) {
+  // Always called with a fixed classification, never an input or raw message.
+  const error = new Error('native startup verification failed');
+  error.startupRule = rule;
+  throw error;
+}
+
 function receiptBound(info, child, endpoint, binary, sha, data) {
   const {pid, url, image_path: image, image_sha256: actual, installation_root: root} = info;
-  assert.ok(pid === child.pid && url === endpoint && actual === sha, 'fixture Runtime identity mismatch');
-  assertSamePath(canonicalPath(image, 'Runtime image receipt'), binary);
-  assertSamePath(canonicalPath(root, 'installation root receipt'), data);
-  assert.match(info.instance_id, uuid);
-  assert.ok(typeof info.process_start_id === 'string' && info.process_start_id.length > 0);
+  if (pid !== child.pid) startupFailure('receipt-pid-mismatch');
+  if (url !== endpoint) startupFailure('receipt-url-mismatch');
+  if (actual !== sha) startupFailure('receipt-digest-mismatch');
+  let canonicalImage, canonicalRoot;
+  try { canonicalImage = canonicalPath(image, 'Runtime image receipt'); }
+  catch { startupFailure('receipt-image-path-unresolved'); }
+  try { canonicalRoot = canonicalPath(root, 'installation root receipt'); }
+  catch { startupFailure('receipt-root-path-unresolved'); }
+  if (canonicalImage !== binary) startupFailure('receipt-image-path-mismatch');
+  if (canonicalRoot !== data) startupFailure('receipt-root-path-mismatch');
+  if (typeof info.instance_id !== 'string' || !uuid.test(info.instance_id)) startupFailure('receipt-instance-invalid');
+  if (typeof info.process_start_id !== 'string' || !info.process_start_id) startupFailure('receipt-birth-missing');
 }
 
 function verifyOwnedFixture(root, codex, sessions, file) {
@@ -163,6 +204,8 @@ async function smoke(binary, sha) {
   const root = canonicalPath(mkdtempSync(join(tempBase, 'respire-session-preview-owned-')));
   assert.ok(below(tempBase, root) && basename(root).startsWith('respire-session-preview-owned-'), 'invalid temp root');
   let child, ended, childFailure, closed, sessionBytes;
+  const stderrSample = Buffer.alloc(STARTUP_MAX_STDERR);
+  let stderrSize = 0, startupVerified = false;
   try {
     const data = join(root, 'data'), models = join(root, 'empty-models'), runtimeDir = join(data, 'runtime');
     secureWindowsFixtureDirectory(root);
@@ -178,20 +221,37 @@ async function smoke(binary, sha) {
     const codex=join(root,'isolated-codex');
     assert.ok(below(root,codex));
     sandboxEnv.CODEX_HOME=codex;
-    stage = 'native launch and bound endpoint';
+    stage = 'spawn native Runtime';
     child = spawn(binary, ['serve', '--host', '127.0.0.1', '--port', String(port), '--data-dir', data],
-      {cwd: root, env: sandboxEnv, stdio: 'ignore', windowsHide: true});
+      {cwd: root, env: sandboxEnv, stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true});
     closed = new Promise(ok => child.once('close', (code, signal) => {
       ended = {code, signal}; ok(ended);
     }));
-    child.once('error', () => { childFailure = true; });
+    child.once('error', error => { childFailure = error; });
+    child.stderr?.on('data', chunk => {
+      // Always drain the pipe. Retain at most the first 4 KiB of locked startup.
+      if (startupVerified || stderrSize === stderrSample.length) return;
+      stderrSize += chunk.copy(stderrSample, stderrSize, 0, stderrSample.length - stderrSize);
+    });
+    child.stderr?.on('error', () => {});
+    await new Promise((ok, fail) => {
+      child.once('spawn', ok);
+      child.once('error', fail);
+    });
+    // Exit can precede close. Retain only native numeric status, never stderr as text.
+    child.once('exit', (code, signal) => { ended = {code, signal}; });
     const childState = () => ended || childFailure;
     const endpointFile = join(runtimeDir, 'endpoint.json');
     // Verify our fresh, child-written endpoint before sending any HTTP at all.
-    const endpointInfo = await poll('isolated endpoint receipt', () =>
-      existsSync(endpointFile) ? fileJson(endpointFile) : null, childState);
+    stage = 'wait for native endpoint receipt';
+    const endpointInfo = await poll('isolated endpoint receipt', () => {
+      if (!existsSync(endpointFile)) return null;
+      try { return fileJson(endpointFile); } catch { startupFailure('endpoint-receipt-unreadable'); }
+    }, childState);
+    stage = 'verify native endpoint receipt identity';
     receiptBound(endpointInfo, child, endpoint, binary, sha, data);
     const health = () => call('/api/health').then(response => requireStatus(response, 200, 'legacy health'));
+    stage = 'wait for scoped locked health';
     const locked = await poll('synthetic locked Runtime', async () => {
       let info;
       try { info = await health(); } catch (error) {
@@ -199,12 +259,19 @@ async function smoke(binary, sha) {
         throw error;
       }
       receiptBound(info, child, endpoint, binary, sha, data);
-      assertProtocol(info);
+      try { assertProtocol(info); } catch { startupFailure('health-protocol-mismatch'); }
       assert.equal(info.store_ready, false, 'Runtime opened store without synthetic unlock');
       return info.startup_complete && info.credential_state === 'required' ? info : null;
     }, childState);
-    assert.equal(locked.state, 'locked');
-    assertSamePath(canonicalPath(locked.data_dir, 'locked profile receipt'), data);
+    stage = 'verify locked profile receipt';
+    if (locked.state !== 'locked') startupFailure('health-not-locked');
+    let lockedRoot;
+    try { lockedRoot = canonicalPath(locked.data_dir, 'locked profile receipt'); }
+    catch { startupFailure('health-profile-path-unresolved'); }
+    if (lockedRoot !== data) startupFailure('health-profile-path-mismatch');
+    startupVerified = true;
+    stderrSample.fill(0);
+    stderrSize = 0;
     // Synthetic v4 release unlock; never use any actual login material.
     stage = 'isolated synthetic unlock';
     const unlocked = await call('/api/runtime/unlock', {method: 'POST', timeout: 15000,
@@ -297,7 +364,16 @@ async function smoke(binary, sha) {
       'stop did not remove the retired owner credential');
     console.log('Exact owned Runtime cleanly drained.');
     assert.equal(viewFailures, 0, 'isolated Session Import preview did not pass');
+  } catch (error) {
+    if (!startupVerified && child) {
+      if (ended) await Promise.race([closed, delay(500, null, {ref:false})]);
+      const rule = error.startupRule;
+      const hint = startupHint(childFailure, ended, stderrSample.subarray(0, stderrSize));
+      console.error('Runtime startup classification: ' + (rule ? rule + '; ' : '') + hint);
+    }
+    throw error;
   } finally {
+    stderrSample.fill(0);
     sessionBytes?.fill(0);
     if (child && !ended && !childFailure) {
       child.kill();
