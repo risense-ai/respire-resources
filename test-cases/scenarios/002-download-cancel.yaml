@@ -1,0 +1,150 @@
+{
+  "id": "E2E-002",
+  "title": "Cancel an active model download and resume operation service",
+  "mock": "rich-1k",
+  "inputs": [
+    "downloadModel"
+  ],
+  "mockInputs": {
+    "downloadModel": "atlas-base"
+  },
+  "steps": [
+    {
+      "name": "Start managed download",
+      "request": {
+        "method": "POST",
+        "path": "/v1/models/downloads",
+        "body": {
+          "model_id": "${downloadModel}",
+          "engine": "cpu"
+        }
+      },
+      "expect": {
+        "status": 202,
+        "oneOf": {
+          "status": [
+            "pending",
+            "running"
+          ]
+        }
+      },
+      "save": {
+        "download": "operation_id"
+      }
+    },
+    {
+      "name": "Observe live progress",
+      "subscribe": {
+        "stream": "downloadEvents",
+        "path": "/v1/operations/${download}/events"
+      }
+    },
+    {
+      "name": "Read progress before cancelling",
+      "event": {
+        "stream": "downloadEvents",
+        "name": "progress",
+        "above": {"progress_percent": 0}
+      },
+      "expect": {
+        "equal": {
+          "operation_id": "${download}",
+          "state": "running"
+        }
+      }
+    },
+    {
+      "name": "Request cancellation",
+      "request": {
+        "method": "DELETE",
+        "path": "/v1/operations/${download}"
+      },
+      "expect": {
+        "status": 202,
+        "equal": {
+          "operation_id": "${download}"
+        }
+      }
+    },
+    {
+      "name": "Observe cancelled terminal event",
+      "event": {
+        "stream": "downloadEvents",
+        "name": "cancelled"
+      },
+      "expect": {
+        "equal": {
+          "operation_id": "${download}",
+          "state": "cancelled"
+        }
+      }
+    },
+    {
+      "name": "Rehydrate cancelled snapshot",
+      "request": {
+        "method": "GET",
+        "path": "/v1/operations/${download}"
+      },
+      "expect": {
+        "status": 200,
+        "equal": {
+          "state": "cancelled"
+        }
+      }
+    },
+    {
+      "name": "Start a new download without restarting Runtime",
+      "request": {
+        "method": "POST",
+        "path": "/v1/models/downloads",
+        "body": {
+          "model_id": "${downloadModel}",
+          "engine": "cpu"
+        }
+      },
+      "expect": {
+        "status": 202,
+        "different": {"operation_id": "${download}"},
+        "oneOf": {
+          "status": [
+            "pending",
+            "running"
+          ]
+        }
+      },
+      "save": {
+        "retry": "operation_id"
+      }
+    },
+    {
+      "name": "Connect to the second download stream",
+      "subscribe": {
+        "stream": "retryEvents",
+        "path": "/v1/operations/${retry}/events"
+      }
+    },
+    {
+      "name": "Second download progresses before cancellation",
+      "event": {"stream": "retryEvents", "name": "progress", "above": {"progress_percent": 0}},
+      "expect": {"equal": {"operation_id": "${retry}", "state": "running"}}
+    },
+    {
+      "name": "Cancel the second synthetic download",
+      "request": {"method": "DELETE", "path": "/v1/operations/${retry}"},
+      "expect": {"status": 202}
+    },
+    {
+      "name": "Verify the second terminal event",
+      "event": {
+        "stream": "retryEvents",
+        "name": "cancelled"
+      },
+      "expect": {
+        "equal": {
+          "operation_id": "${retry}",
+          "state": "cancelled"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,134 @@
+{
+  "en": {
+    "wizard": [
+      "Set up your notebook",
+      "Setup wizard"
+    ],
+    "overview": [
+      "Workspace overview",
+      "Overview"
+    ],
+    "quickpanel": [
+      "Quick capture",
+      "Quick panel"
+    ],
+    "workspace": [
+      "Memory workspace",
+      "Workspace"
+    ],
+    "recall": [
+      "Recall memories",
+      "Recall"
+    ],
+    "diary": [
+      "Daily diary",
+      "Diary"
+    ],
+    "organize": [
+      "Organize memories",
+      "Organize"
+    ],
+    "models": [
+      "Model library",
+      "Models"
+    ],
+    "storage": [
+      "Local storage",
+      "Storage"
+    ],
+    "session-import": [
+      "Import session notes",
+      "Session import"
+    ],
+    "stats": [
+      "Library statistics",
+      "Statistics"
+    ],
+    "accounts": [
+      "Account profiles",
+      "Accounts"
+    ],
+    "grants": [
+      "Access grants",
+      "Access grants"
+    ],
+    "space-members": [
+      "Space members",
+      "Members"
+    ],
+    "injection": [
+      "IDE integration",
+      "IDE injection"
+    ],
+    "settings": [
+      "Workspace settings",
+      "Settings"
+    ]
+  },
+  "zh": {
+    "wizard": [
+      "设置你的笔记本",
+      "设置向导"
+    ],
+    "overview": [
+      "工作区概览",
+      "概览"
+    ],
+    "quickpanel": [
+      "快速记录",
+      "快捷面板"
+    ],
+    "workspace": [
+      "记忆工作区",
+      "工作区"
+    ],
+    "recall": [
+      "检索记忆",
+      "检索"
+    ],
+    "diary": [
+      "每日日记",
+      "日记"
+    ],
+    "organize": [
+      "整理记忆",
+      "整理"
+    ],
+    "models": [
+      "模型库",
+      "模型"
+    ],
+    "storage": [
+      "本地存储",
+      "存储"
+    ],
+    "session-import": [
+      "导入会话笔记",
+      "会话导入"
+    ],
+    "stats": [
+      "资料库统计",
+      "统计"
+    ],
+    "accounts": [
+      "账户资料",
+      "账户"
+    ],
+    "grants": [
+      "访问授权",
+      "访问授权"
+    ],
+    "space-members": [
+      "空间成员",
+      "成员"
+    ],
+    "injection": [
+      "集成开发环境",
+      "开发环境注入"
+    ],
+    "settings": [
+      "工作区设置",
+      "设置"
+    ]
+  }
+}

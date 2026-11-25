@@ -1,0 +1,210 @@
+{
+  "id": "E2E-005",
+  "title": "Space CRUD and memory reads stay within their selected scopes",
+  "mock": "multi-account",
+  "steps": [
+    {
+      "name": "Capture original space",
+      "request": {
+        "method": "GET",
+        "path": "/v1/health",
+        "public": true
+      },
+      "expect": {
+        "status": 200,
+        "present": [
+          "active_space_id"
+        ]
+      },
+      "save": {
+        "original": "active_space_id"
+      }
+    },
+    {
+      "name": "Create alpha",
+      "request": {
+        "method": "POST",
+        "path": "/v1/spaces",
+        "body": {
+          "name": "Card 018 alpha"
+        }
+      },
+      "expect": {
+        "status": 201
+      },
+      "save": {
+        "alpha": "id"
+      }
+    },
+    {
+      "name": "Store marker in alpha",
+      "request": {
+        "method": "POST",
+        "path": "/v1/memories",
+        "body": {
+          "space_id": "${alpha}",
+          "content": "card018-scope-alpha"
+        }
+      },
+      "expect": {
+        "status": 201
+      },
+      "save": {
+        "alphaNote": "id"
+      }
+    },
+    {
+      "name": "Create beta",
+      "request": {
+        "method": "POST",
+        "path": "/v1/spaces",
+        "body": {
+          "name": "Card 018 beta"
+        }
+      },
+      "expect": {
+        "status": 201
+      },
+      "save": {
+        "beta": "id"
+      }
+    },
+    {
+      "name": "Store marker in beta",
+      "request": {
+        "method": "POST",
+        "path": "/v1/memories",
+        "body": {
+          "space_id": "${beta}",
+          "content": "card018-scope-beta"
+        }
+      },
+      "expect": {
+        "status": 201
+      },
+      "save": {
+        "betaNote": "id"
+      }
+    },
+    {
+      "name": "Rename and activate beta",
+      "request": {
+        "method": "PATCH",
+        "path": "/v1/spaces/${beta}",
+        "body": {
+          "name": "Card 018 renamed beta",
+          "active": true
+        }
+      },
+      "expect": {
+        "status": 200,
+        "equal": {
+          "id": "${beta}",
+          "name": "Card 018 renamed beta"
+        }
+      }
+    },
+    {
+      "name": "Check default list contains only the beta note",
+      "request": {
+        "method": "GET",
+        "path": "/v1/memories"
+      },
+      "expect": {
+        "status": 200,
+        "equal": {
+          "items.*.id": [
+            "${betaNote}"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Read the alpha note with an explicit space filter",
+      "request": {
+        "method": "GET",
+        "path": "/v1/memories?space_id=${alpha}"
+      },
+      "expect": {
+        "status": 200,
+        "equal": {
+          "items.*.content": ["card018-scope-alpha"]
+        }
+      }
+    },
+    {
+      "name": "Implicit beta recall cannot return the alpha note",
+      "request": {
+        "method": "POST",
+        "path": "/v1/memories/recall",
+        "body": {
+          "query": "card018-scope-alpha"
+        }
+      },
+      "expect": {
+        "status": 200,
+        "excludes": {
+          "hits.*.memory.id": [
+            "${alphaNote}"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Restore original active space",
+      "request": {
+        "method": "PATCH",
+        "path": "/v1/spaces/${original}",
+        "body": {
+          "active": true
+        }
+      },
+      "expect": {
+        "status": 200
+      }
+    },
+    {
+      "name": "Delete beta",
+      "request": {
+        "method": "DELETE",
+        "path": "/v1/spaces/${beta}"
+      },
+      "expect": {
+        "status": 204
+      }
+    },
+    {
+      "name": "Verify deleted beta is gone",
+      "request": {
+        "method": "GET",
+        "path": "/v1/spaces/${beta}"
+      },
+      "expect": {
+        "status": 404,
+        "media": "application/problem+json",
+        "equal": {
+          "status": 404
+        },
+        "present": [
+          "title",
+          "type"
+        ]
+      }
+    },
+    {
+      "name": "Alpha remains intact",
+      "request": {
+        "method": "GET",
+        "path": "/v1/memories?space_id=${alpha}"
+      },
+      "expect": {
+        "status": 200,
+        "equal": {
+          "items.*.id": [
+            "${alphaNote}"
+          ]
+        }
+      }
+    }
+  ]
+}

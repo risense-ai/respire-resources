@@ -1,0 +1,22 @@
+{
+  "id": "E2E-007",
+  "title": "Frozen legacy RPC status, catalog and read-only CLI dispatch",
+  "target": "legacy-rpc",
+  "steps": [
+    {
+      "name": "Read runtime.status",
+      "request": {"method": "POST", "path": "/rpc", "body": {"v": 1, "id": "card018-runtime.status", "method": "runtime.status", "args": []}},
+      "expect": {"status": 200, "equal": {"v": 1, "id": "card018-runtime.status", "ok": true, "exit": 0, "envelope.command": "runtime.status", "envelope.status": "ok"}}
+    },
+    {
+      "name": "Read model.catalog",
+      "request": {"method": "POST", "path": "/rpc", "body": {"v": 1, "id": "card018-model.catalog", "method": "model.catalog", "args": []}},
+      "expect": {"status": 200, "equal": {"v": 1, "id": "card018-model.catalog", "ok": true, "exit": 0, "envelope.command": "model.catalog", "envelope.status": "ok"}}
+    },
+    {
+      "name": "Dispatch legacy cli.exec for JSON status",
+      "request": {"method": "POST", "path": "/rpc", "body": {"v": 1, "id": "card018-cli.exec", "method": "cli.exec", "args": ["status", "--json"]}},
+      "expect": {"status": 200, "equal": {"v": 1, "id": "card018-cli.exec", "ok": true, "exit": 0, "envelope.command": "status", "envelope.status": "ok"}}
+    }
+  ]
+}

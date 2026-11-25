@@ -1,0 +1,164 @@
+{
+  "id": "E2E-003",
+  "title": "Recall stays responsive while a model switch is in progress",
+  "mock": "rich-1k",
+  "inputs": [
+    "switchModel"
+  ],
+  "mockInputs": {
+    "switchModel": "archive-small"
+  },
+  "steps": [
+    {
+      "name": "Record previous active assets",
+      "request": {
+        "method": "GET",
+        "path": "/v1/models/active-assets"
+      },
+      "expect": {
+        "status": 200,
+        "different": {
+          "active_model_id": "${switchModel}"
+        }
+      },
+      "save": {
+        "previous": "active_model_id"
+      }
+    },
+    {
+      "name": "Seed a recall marker",
+      "request": {
+        "method": "POST",
+        "path": "/v1/memories",
+        "body": {
+          "content": "card018-switch-marker"
+        }
+      },
+      "expect": {
+        "status": 201
+      },
+      "save": {
+        "note": "id"
+      }
+    },
+    {
+      "name": "Start model switch",
+      "request": {
+        "method": "POST",
+        "path": "/v1/models/switch",
+        "body": {
+          "model_id": "${switchModel}",
+          "engine": "cpu"
+        }
+      },
+      "expect": {
+        "status": 202,
+        "oneOf": {
+          "status": [
+            "pending",
+            "running"
+          ]
+        }
+      },
+      "save": {
+        "operation": "operation_id"
+      }
+    },
+    {
+      "name": "Subscribe to the switch",
+      "subscribe": {
+        "stream": "switchEvents",
+        "path": "/v1/operations/${operation}/events"
+      }
+    },
+    {
+      "name": "Observe in-flight switch",
+      "event": {
+        "stream": "switchEvents",
+        "name": "progress"
+      },
+      "expect": {
+        "equal": {
+          "operation_id": "${operation}",
+          "state": "running"
+        }
+      }
+    },
+    {
+      "name": "Recall and health respond in parallel",
+      "parallel": [
+        {
+          "name": "Recall the pre-existing marker",
+          "request": {
+            "method": "POST",
+            "path": "/v1/memories/recall",
+            "body": {
+              "query": "card018-switch-marker"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "includes": {
+              "hits.*.memory.id": [
+                "${note}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Health stays ready",
+          "request": {
+            "method": "GET",
+            "path": "/v1/health",
+            "public": true
+          },
+          "expect": {
+            "status": 200,
+            "equal": {
+              "status": "ready"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Switch was still in flight after recall returned",
+      "request": {
+        "method": "GET",
+        "path": "/v1/operations/${operation}"
+      },
+      "expect": {
+        "status": 200,
+        "equal": {
+          "state": "running"
+        }
+      }
+    },
+    {
+      "name": "Observe successful switch",
+      "event": {
+        "stream": "switchEvents",
+        "name": "completed"
+      },
+      "expect": {
+        "equal": {
+          "operation_id": "${operation}",
+          "state": "completed"
+        }
+      }
+    },
+    {
+      "name": "New model is active",
+      "request": {
+        "method": "GET",
+        "path": "/v1/models/active-assets"
+      },
+      "expect": {
+        "status": 200,
+        "equal": {
+          "active_model_id": "${switchModel}"
+        }
+      }
+    }
+  ]
+}
