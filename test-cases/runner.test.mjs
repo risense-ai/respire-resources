@@ -526,3 +526,46 @@ test("bilingual layout fixtures match all 16 gallery headings and have complete 
   assert.throws(() => validateCatalogs({page: {heading: "Models"}}, {page: {heading: "Models"}}, ["page.title"]),
     /Missing required translation/);
 });
+
+
+test("scenario space discovery uses authenticated status even if public health omits active_space_id", async () => {
+  const scenarios = await loadScenarios();
+  const wrapper = (scenario, alter = () => {}) => {
+    const target = mockTarget(scenario.mock);
+    const observed = [];
+    return {...target, observed, async request(input) {
+      const next = await target.request(input);
+      if (input.path === "/v1/health") {
+        assert.equal(input.public, true);
+        delete next.data.active_space_id;
+      }
+      if (input.path === "/v1/status/light") {
+        assert.notEqual(input.public, true);
+        observed.push(next.data.space_id);
+      }
+      alter(input, next);
+      return next;
+    }};
+  };
+  const health = scenarios.find(scenario => scenario.id === "E2E-001");
+  const spaces = scenarios.find(scenario => scenario.id === "E2E-005");
+  for (const scenario of [health, spaces]) {
+    const target = wrapper(scenario);
+    await runScenario(scenario, target);
+    assert.equal(target.observed.length, 1);
+    assert.equal(typeof target.observed[0], "string");
+    const absentSpace = wrapper(scenario, ({path}, response) => {
+      if (path === "/v1/status/light") delete response.data.space_id;
+    });
+    await assert.rejects(runScenario(scenario, absentSpace), /space_id/);
+  }
+  const missingCapability = wrapper(health, ({path}, response) => {
+    if (path === "/v1/health") response.data.capabilities = ["sse.operations.v1"];
+  });
+  await assert.rejects(runScenario(health, missingCapability), /capabilities/);
+  let healthCalls = 0;
+  const changedInstance = wrapper(health, ({path}, response) => {
+    if (path === "/v1/health" && ++healthCalls === 2) response.data.instance_id = "different";
+  });
+  await assert.rejects(runScenario(health, changedInstance), /instance_id/);
+});

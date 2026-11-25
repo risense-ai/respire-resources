@@ -30,7 +30,28 @@
       }
     },
     {
-      "name": "Instance stays stable while opening an empty workspace",
+      "name": "Check authenticated status for the empty active workspace",
+      "request": {
+        "method": "GET",
+        "path": "/v1/status/light"
+      },
+      "expect": {
+        "status": 200,
+        "equal": {
+          "memory_count": 0,
+          "diary_count": 0,
+          "indexed_count": 0
+        },
+        "present": [
+          "space_id"
+        ]
+      },
+      "save": {
+        "space": "space_id"
+      }
+    },
+    {
+      "name": "Public instance stays stable after inspecting the workspace",
       "request": {
         "method": "GET",
         "path": "/v1/health",
@@ -40,28 +61,6 @@
         "status": 200,
         "equal": {
           "instance_id": "${instance}"
-        },
-        "present": [
-          "active_space_id"
-        ]
-      },
-      "save": {
-        "space": "active_space_id"
-      }
-    },
-    {
-      "name": "Check empty workspace counts",
-      "request": {
-        "method": "GET",
-        "path": "/v1/status/light"
-      },
-      "expect": {
-        "status": 200,
-        "equal": {
-          "space_id": "${space}",
-          "memory_count": 0,
-          "diary_count": 0,
-          "indexed_count": 0
         }
       }
     }
