@@ -1,0 +1,44 @@
+{
+  "baseline": {"ref":"v1.0.21-dev.6","commit":"425f397db2a64347d3d27fa93db630fad6b9b520","source":["crates/commands/src/cli_def.rs","crates/commands/src/autostart.rs","crates/commands/src/metadata.rs"]},
+  "top": [
+    "review", "runtime", "restart", "prompt", "v", "grant", "session", "keygen",
+    "remember", "import", "recall", "query-log", "bench", "run-log", "classify", "list",
+    "forget", "purge", "restore", "promote", "demote", "show", "chain", "attach",
+    "tree", "resort", "agent-config", "retitle", "retitle-many", "sync", "sync-conflicts", "sync-resolve",
+    "sync-history", "sync-restore", "sync-reset", "status", "memory-revision", "capabilities", "reembed", "defrag",
+    "split", "tree-deepen", "inject", "tree-cure", "tree-float", "doctor", "audit", "witness",
+    "web", "classify-config", "model", "config", "candidates", "passport", "history", "plugin",
+    "mcp", "update-check", "repack", "diary", "diary-search", "diary-fragment", "taxonomy", "root-create",
+    "update", "export", "backup", "metadata", "snapshot", "secret", "keys-export", "super-reset",
+    "fivekeys", "register", "account", "migrate", "space", "logout", "login", "book-material",
+    "portrait-material", "share", "share-import", "extract"
+  ],
+  "aliases": {"v":["version"]},
+  "groups": {
+    "model": ["catalog","configure","switch","progress","resume","install","activate","reset-cpu","engine","load","install-engines","probe","uninstall"],
+    "runtime": ["run","start","stop","restart","status","result","auth-result","key-result","key-rollback","account-result","account-rollback","autostart","install","list","clean","update","supervise"],
+    "runtime autostart": ["enable","disable","remove","status"],
+    "snapshot": ["create","list","restore","recover","resume-sync"],
+    "grant": ["create","list","revoke"],
+    "session": ["list","revoke"],
+    "query-log": ["mark"],
+    "bench": ["run","mine"],
+    "plugin": ["list","test"],
+    "metadata": ["status","enable","disable"]
+  },
+  "groupAliases": {"model":{"install":["install-m3"],"uninstall":["uninstall-m3"]}},
+  "options": {
+    "": ["--json","--help","--version"],
+    "inject": ["--targets","--tui","--all","--id","--remove","--preview","--expected"],
+    "extract": ["--targets","--tui","--all","--id","--dry-run","--since","--limit","--cwd","--model","--session","--kind","--importance","--parent","--include-subagents"],
+    "doctor": ["--remote","--check-update","--fix"],
+    "keys-export": ["--out"],
+    "recall": ["--mode","--limit","--type","--project","--trace","--titles","--brief","--render-budget-base64","--render-min-score","--no-related","--intent"],
+    "resort": ["--go","--spec","--status","--reset","--threshold"],
+    "split": ["--go","--spec"],
+    "tree-deepen": ["--root","--go","--titles","--auto","--min"],
+    "model switch": ["--backend","--engine","--variant"],
+    "model install": ["--mirror","--model","--for-engine"],
+    "space": ["--note","--readonly","--code","--session","--all","--yes"]
+  }
+}

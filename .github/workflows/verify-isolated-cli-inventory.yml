@@ -1,0 +1,59 @@
+name: CARD-018 released CLI help inventory
+
+on:
+  push:
+    branches: [verify/card-018-cli-inventory]
+
+permissions:
+  contents: read
+
+jobs:
+  native-cli-inventory:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - name: Checkout the exact monorepo CLI
+        uses: actions/checkout@v4
+        with:
+          repository: risense-ai/respire
+          ref: 0194128361244c51142d258a18631050b83daaea
+          path: native-cli
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Build native CLI
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          if ($env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or $env:RUNNER_OS -ne 'Windows' -or $env:RUNNER_ARCH -ne 'X64') { throw 'Unexpected runner' }
+          if ((git -C native-cli rev-parse HEAD) -cne '0194128361244c51142d258a18631050b83daaea') { throw 'Pinned CLI mismatch' }
+          rustup toolchain install 1.95.0 --profile minimal
+          cargo +1.95.0 build --locked --manifest-path native-cli/apps/cli/Cargo.toml --target x86_64-pc-windows-msvc --target-dir (Join-Path $env:RUNNER_TEMP 'card018-cli-target') -p respire --bin rsrs
+      - name: Check fixed help invocations without CLI network access
+        shell: pwsh
+        env:
+          CARD018_DISPOSABLE_CLI_HELP: '1'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          $cli = (Resolve-Path -LiteralPath (Join-Path $env:RUNNER_TEMP 'card018-cli-target/x86_64-pc-windows-msvc/debug/rsrs.exe')).Path
+          $digest = (Get-FileHash -LiteralPath $cli -Algorithm SHA256).Hash.ToLowerInvariant()
+          $rules = @(Get-NetConnectionProfile)
+          foreach ($profile in $rules) {
+            $name = if ($profile.NetworkCategory -eq 'DomainAuthenticated') { 'Domain' } else { "$($profile.NetworkCategory)" }
+            if ((Get-NetFirewallProfile -Name $name -PolicyStore ActiveStore).Enabled -ne 'True') { throw 'Active runner firewall unavailable' }
+          }
+          $id = 'card018-cli-help-' + [Guid]::NewGuid().ToString('N')
+          try {
+            [void](New-NetFirewallRule -Name $id -DisplayName $id -Program $cli -Direction Outbound -Action Block -Enabled True -Profile Any)
+            $actual = Get-NetFirewallRule -Name $id -PolicyStore ActiveStore
+            if ($actual.Enabled -ne 'True' -or $actual.Action -ne 'Block' -or ($actual | Get-NetFirewallApplicationFilter).Program -ine $cli) { throw 'Exact CLI isolation not in effect' }
+            "Native CLI SHA-256: $digest"
+            node --test test-cases/cli-e2e/legacy-help-inventory.test.mjs
+            node test-cases/cli-e2e/legacy-help-inventory.mjs --cli-bin $cli --sha256 $digest
+          } finally {
+            Remove-NetFirewallRule -Name $id -ErrorAction SilentlyContinue
+          }
