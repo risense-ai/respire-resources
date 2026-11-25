@@ -1,0 +1,47 @@
+name: CARD-018 isolated compiled Client2 UI
+on:
+  pull_request:
+    branches: [main]
+    types: [labeled]
+permissions:
+  contents: read
+concurrency:
+  group: card018-compiled-client2-single-qualification
+  cancel-in-progress: false
+jobs:
+  windows-ui:
+    if: >-
+      github.repository == 'risense-ai/respire-resources' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'verify/card-018-compiled-client2-ui' &&
+      github.event.pull_request.draft == true &&
+      github.event.label.name == 'card018-compiled-client2-proof' &&
+      github.run_attempt == 1
+    runs-on: windows-2025
+    timeout-minutes: 55
+    env:
+      CARD018_FROZEN_HEAD: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: "${{ github.event.pull_request.head.sha }}"
+          persist-credentials: false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: risense-ai/respire
+          ref: 505ecc4d3a4f6c67c6a35751ed3c467a337027e9
+          path: exact-product
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: exact-product/apps/client2/go.mod
+          cache: false
+      - name: Build exact hosted artifacts and acquire reviewed pinned tools
+        shell: pwsh
+        run: ./test-cases/client2-e2e/qualify-compiled-ui.ps1 Build
+      - name: Run offline synthetic compiled UI cases serially
+        shell: pwsh
+        run: ./test-cases/client2-e2e/qualify-compiled-ui.ps1 Run
