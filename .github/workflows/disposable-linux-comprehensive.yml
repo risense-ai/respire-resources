@@ -1,0 +1,509 @@
+name: CARD-018 ordinary Linux SQLite qualification
+'on':
+  pull_request:
+    types: [opened]
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  sqlite:
+    if: >-
+      github.repository == 'risense-ai/respire-resources' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.base.repo.full_name == github.repository &&
+      github.event.pull_request.draft == true &&
+      github.event.pull_request.head.ref == 'verify/card018-linux-comprehensive' &&
+      github.event.pull_request.base.ref == 'main' &&
+      github.event.pull_request.base.sha == '8337ca0ef25bbecf563f9f6e0f6662d026067e05' &&
+      github.run_attempt == '1'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Inspect the exact Resources event head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: risense-ai/respire-resources
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 2
+          path: inspection
+          persist-credentials: false
+      - name: Verify single-parent workflow-only addition
+        working-directory: inspection
+        shell: bash
+        env:
+          EVENT_HEAD: ${{ github.event.pull_request.head.sha }}
+          BASE: 8337ca0ef25bbecf563f9f6e0f6662d026067e05
+        run: |
+          set -euo pipefail
+          [[ "$EVENT_HEAD" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$EVENT_HEAD"
+          test "$(git show -s --format=%P HEAD)" = "$BASE"
+          path=.github/workflows/disposable-linux-comprehensive.yml
+          git diff-tree --no-commit-id -r --raw --no-abbrev --no-renames -z "$BASE" HEAD > "$RUNNER_TEMP/card018-changes"
+          blob=$(git rev-parse "HEAD:$path")
+          printf ':000000 100644 %040d %s A\0%s\0' 0 "$blob" "$path" | cmp - "$RUNNER_TEMP/card018-changes"
+          git cat-file blob "$blob" | sha256sum
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: risense-ai/respire
+          ref: ca7d3d309581017be32aa0a303740c2a011619c1
+          path: product
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: risense-ai/respire-resources
+          ref: 8337ca0ef25bbecf563f9f6e0f6662d026067e05
+          path: resources
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.14.0'
+      - name: Build pinned binaries and check both Golden files offline
+        shell: bash
+        run: |
+          set -euo pipefail
+          work=$(mktemp -d "$RUNNER_TEMP/card018-comprehensive-XXXXXXXX")
+          cd "$work"
+          cat > recipe.sh <<'END_CARD018_FILE'
+          #!/usr/bin/env bash
+          # Inert review candidate. On a disposable ubuntu-22.04 X64 runner:
+          # bash recipe.sh /path/to/product-git /path/to/resources-git
+          set -euo pipefail
+          product=ca7d3d309581017be32aa0a303740c2a011619c1
+          resources=8337ca0ef25bbecf563f9f6e0f6662d026067e05
+          driver=$(cd "$(dirname "$0")" && pwd)
+          node_bin=$(realpath -e -- "$(type -P node)")
+          test -x "$node_bin"
+          test "$("$node_bin" --version)" = v22.14.0
+          node_sha=$(sha256sum "$node_bin" | cut -d' ' -f1)
+          base=$(mktemp -d "${RUNNER_TEMP:?}/card018-build-XXXXXXXX")
+          mkdir "$base/product" "$base/resources"
+          git -C "$1" archive "$product" | tar -x -C "$base/product"
+          git -C "$2" archive "$resources" test-cases/fixtures/db | tar -x -C "$base/resources"
+          cd "$base/product"
+          target=x86_64-unknown-linux-gnu
+          test "$(uname -m)" = x86_64
+          rustup toolchain install 1.95.0 --profile minimal
+          test "$(rustc +1.95.0 -vV | sed -n 's/^host: //p')" = "$target"
+          export ORT_LIB_PATH="$base/ort"
+          bash apps/runtime/scripts/prepare-gnu-ort.sh "$target" "$ORT_LIB_PATH"
+          export ORT_SKIP_DOWNLOAD=1 ORT_PREFER_DYNAMIC_LINK=1
+          export RUSTFLAGS="-C target-feature=-crt-static -C embed-bitcode=no -C link-arg=-Wl,-rpath,$ORT_LIB_PATH"
+          common=(--locked --manifest-path apps/runtime/Cargo.toml --target "$target" --target-dir "$base/target")
+          cargo +1.95.0 build "${common[@]}" -p respire_runtime --bin rsrs-runtime
+          bin="$base/target/$target/debug/rsrs-runtime"
+          ldd "$bin" > "$base/linkage"
+          grep -F -- "$ORT_LIB_PATH/libonnxruntime.so.1" "$base/linkage"
+          if grep -F 'not found' "$base/linkage"; then exit 1; fi
+          cargo +1.95.0 test "${common[@]}" -p respire_storage --lib --no-run --message-format=json > "$base/test-build.jsonl"
+          testbin=$(jq -ers '[.[] | select(.reason=="compiler-artifact" and .target.name=="respire_storage" and .profile.test and .executable!=null) | .executable] | unique | if length==1 then .[0] else error("expected one native storage test executable") end' "$base/test-build.jsonl")
+          runtime_sha=$(sha256sum "$bin" | cut -d' ' -f1)
+          golden="$base/resources/test-cases/fixtures/db/respire-1x-synthetic.db"
+          echo "a081b149521d3dd516fdda50bc744249293fb30990e3b98d1ee392189fe02c9d  $golden" | sha256sum -c -
+          mkdir -m 700 "$base/offline"
+          sudo unshare --net -- bash -ceu '
+            ip link set lo up
+            exec setpriv --reuid="$1" --regid="$2" --clear-groups --no-new-privs env -i PATH=/usr/bin:/bin HOME="$3" TMPDIR="$3" timeout --kill-after=8s 480s bash "$4/offline.sh" "$4" "$5" "$6" "$7" "$8" "$9" "${10}"
+          ' recipe "$(id -u)" "$(id -g)" "$base/offline" "$driver" "$bin" "$node_bin" "$runtime_sha" "$node_sha" "$golden" "$testbin"
+          END_CARD018_FILE
+          echo 'e3f424a407664320bd52d88f69e34dcf50182801c9212fc74718ea0d363d23c8  recipe.sh' | sha256sum -c -
+          cat > offline.sh <<'END_CARD018_FILE'
+          set -euo pipefail
+          cd "$HOME"
+          /usr/bin/python3 -c 'import socket,sys;sys.exit({n for _,n in socket.if_nameindex()} != {"lo"})'
+          export RESPIRE_TEST_GOLDEN_DB="$6"
+          case_name=transport::local::migration_backup::tests::published_golden_repair_is_durable_and_failure_keeps_original
+          timeout 110s "$7" --ignored --exact "$case_name" --test-threads=1 --format pretty | tee "$HOME/storage-result.txt"
+          grep -Fx "test $case_name ... ok" "$HOME/storage-result.txt"
+          grep -F '1 passed; 0 failed; 0 ignored' "$HOME/storage-result.txt"
+          unset RESPIRE_TEST_GOLDEN_DB
+          /usr/bin/python3 -B "$1/comprehensive_check.py" "$2" "$3" "$4" "$5"
+          END_CARD018_FILE
+          echo 'aaeb7aff67f735a7e86d7e40e8d9886cb2c869a0ab3be3e5cd3400e12ee29bed  offline.sh' | sha256sum -c -
+          cat > runtime_cycle.py <<'END_CARD018_FILE'
+          """Offline, positive-only Golden startup comparison. Run through the companion recipe."""
+          import contextlib
+          import hashlib
+          import http.client
+          import json
+          import os
+          from pathlib import Path
+          import secrets
+          import shutil
+          import socket
+          import sqlite3
+          import subprocess
+          import sys
+          import tempfile
+          import time
+          
+          PRODUCT = "ca7d3d309581017be32aa0a303740c2a011619c1"
+          RESOURCES = "8337ca0ef25bbecf563f9f6e0f6662d026067e05"
+          GOLDEN = "a081b149521d3dd516fdda50bc744249293fb30990e3b98d1ee392189fe02c9d"
+          ROW = "9ff3d60ba6b9ce2649364cc0d87e83ab1bea504b25cb233da1f1df27667ca5c9"
+          
+          
+          def require(ok, message):
+              if not ok:
+                  raise ValueError(message)
+          
+          
+          def digest(path):
+              h = hashlib.sha256()
+              with path.open('rb') as src:
+                  for chunk in iter(lambda: src.read(1048576), b''):
+                      h.update(chunk)
+              return h.hexdigest()
+          
+          
+          def request(port, path, body=None, headers=None):
+              with contextlib.closing(http.client.HTTPConnection('127.0.0.1', port, timeout=12)) as conn:
+                  conn.request('GET' if body is None else 'POST', path,
+                               None if body is None else json.dumps(body),
+                               {'Content-Type': 'application/json', **(headers or {})})
+                  response = conn.getresponse()
+                  require(response.status == 200, f'{path} HTTP {response.status}')
+                  raw = response.read(1048577)
+                  require(len(raw) <= 1048576, 'oversized response')
+                  return json.loads(raw)
+          
+          
+          def cycle(binary, sha, root, env, factor, token):
+              with socket.socket() as probe:
+                  probe.bind(('127.0.0.1', 0))
+                  port = probe.getsockname()[1]
+              endpoint = f'http://127.0.0.1:{port}'
+              proc = subprocess.Popen([binary, 'serve', '--host', '127.0.0.1', '--port', str(port),
+                                       '--data-dir', root], cwd=root, env=env, stdin=subprocess.DEVNULL,
+                                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+              try:
+                  end = time.monotonic() + 90
+                  while time.monotonic() < end:
+                      require(proc.poll() is None, 'Runtime exited during startup')
+                      try:
+                          pub = json.loads((root / 'runtime/endpoint.json').read_bytes())
+                          if pub['pid'] == proc.pid:
+                              for key, value in dict(url=endpoint, data_dir=str(root), image_path=str(binary),
+                                                     image_sha256=sha).items():
+                                  require(pub[key] == value, 'endpoint ' + key)
+                              h = request(port, '/api/health')
+                              for key in ('pid', 'url', 'image_path', 'image_sha256', 'data_dir', 'instance_id'):
+                                  require(h[key] == pub[key], 'health ' + key)
+                              if h['startup_complete'] and h['state'] == 'locked':
+                                  break
+                      except (FileNotFoundError, ConnectionRefusedError):
+                          pass
+                      time.sleep(.1)
+                  else:
+                      raise TimeoutError('locked startup')
+                  unlock = request(port, '/api/runtime/unlock', dict(schema_version=1, profile=str(root),
+                                   session_sha256=digest(root / 'session.json'), instance_id=h['instance_id'],
+                                   generation=h['generation'], super_password=factor, login_password=None),
+                                   {'Authorization': 'Bearer ' + token})
+                  require(unlock['store_ready'] is True, 'unlock')
+                  ready = request(port, '/api/health')
+                  require(ready['state'] == 'ready' and ready['store_ready'] and
+                          all(ready[k] == h[k] for k in ('instance_id','pid','process_start_id','image_sha256','data_dir')), 'ready identity')
+                  scope = {k: ready[k] for k in ('installation_id','instance_id','account_id','generation')}
+                  stop = request(port, '/api/runtime/stop', scope, {'X-Respire-Lifecycle':'coordinator-v1'})
+                  require(stop['ok'] is True and stop['state'] == 'accepted', 'stop acceptance')
+                  require(proc.wait(35) == 0, 'clean exit')
+                  drained = json.loads((root / 'runtime' / ('stop-' + ready['instance_id'] + '.json')).read_bytes())
+                  require(drained['state'] == 'drained' and drained['unfinished'] == [] and
+                          drained['operation_id'] == stop['operation_id'] and
+                          all(drained[k] == ready[k] for k in (*scope, 'pid','image_sha256','process_start_id','runtime_version','image_path')), 'stop receipt')
+                  return dict(pid=proc.pid, instance=ready['instance_id'], start=ready['process_start_id'])
+              finally:
+                  if proc.poll() is None:
+                      proc.kill()
+                      proc.wait(5)
+          
+          
+          def make_session(node, sha, expected_version, root, env):
+              require(node.is_absolute() and node == node.resolve(strict=True), 'canonical Node path required')
+              require(digest(node) == sha, 'Node digest mismatch')
+              version = subprocess.check_output([node, '--version'], env=env, text=True, timeout=10).strip()
+              require(version == expected_version, 'Node version mismatch')
+              return subprocess.check_output([node, Path(__file__).with_name('session.mjs'), root / 'session.json'],
+                                             env=env, text=True, timeout=10)
+          
+          
+          END_CARD018_FILE
+          echo '56db74a66aba2eea877529b84078606ce31b4da367cba8b93c446a34d29e8df9  runtime_cycle.py' | sha256sum -c -
+          cat > comprehensive_check.py <<'END_CARD018_FILE'
+          import contextlib
+          import json
+          import os
+          from pathlib import Path
+          import secrets
+          import shutil
+          import socket
+          import sqlite3
+          import sys
+          import tempfile
+          from runtime_cycle import cycle, digest, make_session, require, PRODUCT, RESOURCES
+          
+          TABLES = ('memories', 'sync_outbox', 'review_history', 'access_grants', 'query_log', 'skill_runs', 'entry_audit')
+          PIN = '33f83225b1441f6d813792add07ea3d5ab0d0748b2ae4f14363b1725f17e2e30'
+          
+          
+          def observe(path):
+              with contextlib.closing(sqlite3.connect(path.resolve().as_uri()+'?mode=ro', uri=True)) as db:
+                  require(db.execute('pragma integrity_check').fetchall() == [('ok',)], 'integrity')
+                  require(not db.execute('pragma foreign_key_check').fetchall(), 'foreign keys')
+                  tables = {name:db.execute(f'select * from {name} order by rowid').fetchall() for name in TABLES}
+                  require(all(len(rows) == 1 for rows in tables.values()), 'fixture cardinality')
+                  triggers = db.execute("select name,sql from sqlite_schema where type='trigger' order by name").fetchall()
+                  require(len(triggers) == 29, 'trigger inventory')
+                  require(db.execute("select typeof(id),typeof(ciphertext),length(ciphertext)>0 from memories").fetchone() == ('text','text',1), 'encrypted TEXT-ID fixture')
+                  require(db.execute("select count(*) from sync_outbox where state='pending'").fetchone() == (1,), 'pending outbox')
+                  return tables, triggers, db.execute('pragma user_version').fetchone()
+          
+          
+          def main():
+              binary, node = (Path(v).resolve(strict=True) for v in sys.argv[1:3])
+              sha, node_sha = sys.argv[3:]
+              require({n for _,n in socket.if_nameindex()} == {'lo'}, 'loopback-only namespace required')
+              require(digest(binary) == sha, 'Runtime digest')
+              fixture = Path(__file__).with_name('comprehensive-synthetic.db')
+              require(digest(fixture) == PIN, 'fixture digest')
+              os.umask(0o077)
+              with tempfile.TemporaryDirectory() as temp:
+                  root = Path(temp).resolve()/'data'
+                  (root/'runtime').mkdir(parents=True)
+                  env = dict(PATH='/usr/bin:/bin', RSRS_DATA_DIR=str(root), XDG_DATA_HOME=str(root),
+                             RSRS_BIN_DIR=str(binary.parent), RSRS_NO_AUTOSYNC='1')
+                  for key in ('HOME','TMPDIR','XDG_CONFIG_HOME','XDG_CACHE_HOME','XDG_STATE_HOME','RSRS_M3_DIR'):
+                      p = Path(temp)/key
+                      p.mkdir()
+                      env[key] = str(p)
+                  live = root/'rsrs.db'
+                  shutil.copyfile(fixture, live)
+                  before = observe(live)
+                  require(before[2] == (0,), 'Golden marker')
+                  factor = make_session(node, node_sha, 'v22.14.0', root, env)
+                  token = secrets.token_hex(32)
+                  (root/'runtime/token').write_text(token)
+                  starts = []
+                  for _ in range(2):
+                      starts.append(cycle(binary,sha,root,env,factor,token))
+                      require(observe(live) == before, 'row, trigger or marker drift')
+                  require(starts[0]['instance'] != starts[1]['instance'], 'distinct processes')
+                  print(json.dumps(dict(product=PRODUCT, resources=RESOURCES, runtime_sha256=sha,
+                                        fixture_sha256=PIN, counts={k:len(v) for k,v in before[0].items()},
+                                        triggers=len(before[1]), starts=starts)))
+          
+          
+          if __name__ == '__main__':
+              main()
+          END_CARD018_FILE
+          echo '2da3a0301a0ec58969480e847957b3a4e986a22406efa2cc6e7971515a7382a4  comprehensive_check.py' | sha256sum -c -
+          cat > session.mjs <<'END_CARD018_FILE'
+          // Match the reviewed release smoke's v4 format and the Golden row's synthetic URK.
+          import {randomBytes, hkdfSync, createCipheriv} from 'node:crypto';
+          import {writeFileSync} from 'node:fs';
+          const entropy = randomBytes(18), nonce = randomBytes(12), salt = randomBytes(16);
+          const key = hkdfSync('sha256', entropy, salt, 'onememory:kek:v4', 32);
+          const cipher = createCipheriv('aes-256-gcm', key, nonce);
+          const wrapped = Buffer.concat([cipher.update(Buffer.alloc(32, 42)), cipher.final(), cipher.getAuthTag()]);
+          writeFileSync(process.argv[2], JSON.stringify({user:'fixture', addr:'https://fixture.invalid', vault_version:4,
+            kdf_salt:salt.toString('hex'), urk_nonce:nonce.toString('hex'), wrapped_urk:wrapped.toString('hex')}), {flag:'wx',mode:0o600});
+          process.stdout.write('A3-' + entropy.toString('hex'));
+          END_CARD018_FILE
+          echo '9cc379477cde4ab940940c2dc032c4366d0faa86bcb81a1ea895d1bac27b873f  session.mjs' | sha256sum -c -
+          base64 -d <<'END_CARD018_DB' | gzip -d > comprehensive-synthetic.db
+          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
+          END_CARD018_DB
+          echo '33f83225b1441f6d813792add07ea3d5ab0d0748b2ae4f14363b1725f17e2e30  comprehensive-synthetic.db' | sha256sum -c -
+          bash recipe.sh "$GITHUB_WORKSPACE/product" "$GITHUB_WORKSPACE/resources"
