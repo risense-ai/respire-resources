@@ -356,11 +356,17 @@ export async function probeReadiness(base, pid, releasedOld = false, profile) {
   return health;
 }
 
-export async function withRuntime(binary, fixture, run, {releasedOld = false, junction = false, deviceLocal = false} = {}) {
+export async function withRuntime(binary, fixture, run, {releasedOld = false, junction = false, deviceLocal = false, downloadMirrorPort} = {}) {
   assert(!deviceLocal || (fixture?.syntheticReady === true && !releasedOld && !fixture.profile),
     "Device-local setup requires an owned synthetic ready fixture");
   assert(!fixture?.syntheticReady || (!releasedOld && !fixture.profile),
     "Synthetic ready setup cannot use released-old or a supplied profile");
+  if (downloadMirrorPort !== undefined) {
+    assert(fixture?.syntheticReady === true && deviceLocal && !junction && !releasedOld && !fixture.profile,
+      "Download fixture requires a fresh synthetic device-local profile");
+    assert(Number.isInteger(downloadMirrorPort) && downloadMirrorPort > 1023 && downloadMirrorPort <= 65535,
+      "Download fixture requires an unprivileged TCP port");
+  }
   await assertBinary(binary, "Runtime");
   if (fixture?.profile) await assertFixtureDirectory(fixture.profile);
 
@@ -388,6 +394,9 @@ export async function withRuntime(binary, fixture, run, {releasedOld = false, ju
     } else await mkdir(env.RSRS_DATA_DIR);
     const synthetic = fixture?.syntheticReady ? await prepareModernReady(root, env, token, {deviceLocal}) : undefined;
     if (synthetic) console.log("FIXTURE SYNTHETIC MODERN READY: disposable Vault v4 session, local host unlock, no user configuration");
+    if (downloadMirrorPort !== undefined) {
+      env.RSRS_E2E_LOOPBACK_MIRROR = "http://127.0.0.1:" + downloadMirrorPort;
+    }
     runtime = ownedProcess(binary, ["serve", "--host", "127.0.0.1", "--port", String(port), "--data-dir", env.RSRS_DATA_DIR],
       {cwd: workspace, env, stdio: ["ignore", "pipe", "pipe"]});
     const diagnostics = startupDiagnostics(runtime.child);
