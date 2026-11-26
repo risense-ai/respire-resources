@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
-$source = '505ecc4d3a4f6c67c6a35751ed3c467a337027e9'
+$source = '4da41a593ea1663a8199b4b9a1475eb05b8620a8'
 $root = $env:GITHUB_WORKSPACE
 $head = $env:CARD018_FROZEN_HEAD
 if ($env:GITHUB_ACTIONS -cne 'true' -or $env:RUNNER_ENVIRONMENT -cne 'github-hosted' -or
@@ -58,6 +58,15 @@ $env:GOFLAGS='-mod=readonly'
     $dst = Join-Path $deskSource $f
     if (Test-Path -LiteralPath $dst) { throw 'Test overlay collides with product source' }
     Copy-Item -LiteralPath (Join-Path $fixtures $f) -Destination $dst
+    # These three exact fixtures hard-code the previous reviewed product pin.
+    # Substitute only that literal; keep all acceptance and owner checks intact.
+    $pinFiles = @('card018_positive_memory_app_test.go','card018_storage_settings_app_test.go','card018_diary_accounts_app_test.go')
+    if ($f -cin $pinFiles) {
+      $prior = '505ecc4d3a4f6c67c6a35751ed3c467a337027e9'
+      $text = [IO.File]::ReadAllText($dst)
+      if ([regex]::Matches($text,[regex]::Escape($prior)).Count -ne 1) { throw 'Unexpected compiled fixture product pin' }
+      [IO.File]::WriteAllText($dst,$text.Replace($prior,$source),[Text.UTF8Encoding]::new($false))
+    }
   }
   Push-Location (Join-Path $repo 'packages/runtime-sdk-go')
   try { go generate ./... } finally { Pop-Location }
