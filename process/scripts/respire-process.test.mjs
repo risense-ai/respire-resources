@@ -277,13 +277,20 @@ test("lessons-audit counts independent fixes and reverts and reports missing led
   git("init", "-q");
   git("commit", "--allow-empty", "-qm", "initial");
   const base = git("rev-parse", "HEAD");
-  function audit() {
+  const main = git("branch", "--show-current");
+  git("checkout", "-qb", "side");
+  git("commit", "--allow-empty", "-qm", "fix: off-chain", "-m", "Lesson: L-001");
+  const side = git("rev-parse", "HEAD");
+  git("checkout", "-q", main);
+  function audit(previous = base) {
     return JSON.parse(execFileSync(process.execPath, [path.join(ROOT, "process/scripts/respire-process.mjs"),
-      "lessons-audit", base, git("rev-parse", "HEAD")], { cwd: dir, encoding: "utf8" }));
+      "lessons-audit", previous, git("rev-parse", "HEAD")], { cwd: dir, encoding: "utf8", stdio: "pipe" }));
   }
   for (const title of ["fix(cli): first", "revert: second", "docs: ignored"]) {
     git("commit", "--allow-empty", "-qm", title, "-m", "Lesson: L-001\nLesson: L-001");
   }
+  git("merge", "--no-ff", "-qm", "merge the side branch", "side");
+  assert.throws(() => audit(side), /Audit base is not on the current first-parent chain/);
   assert.deepEqual(audit().guardrails, []);
   fs.writeFileSync(path.join(dir, "LESSONS.md"), "Test incident\n");
   git("add", "LESSONS.md");

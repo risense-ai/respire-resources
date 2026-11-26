@@ -7,13 +7,18 @@ export function auditLessons(cwd, ledgerPath, previous, current) {
     throw new Error("Expected two full commit SHAs for the audit range");
   }
   const git = (...args) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
-  git("merge-base", "--is-ancestor", previous, current);
+  [previous, current] = [previous.toLowerCase(), current.toLowerCase()];
+  const commits = git("rev-list", "--first-parent", previous + ".." + current)
+    .split("\n").filter(Boolean);
+  if (previous !== current && (!commits.length ||
+    git("rev-parse", "--verify", commits.at(-1) + "^1") !== previous)) {
+    throw new Error("Audit base is not on the current first-parent chain");
+  }
   const lessons = new Set(Array.from(fs.readFileSync(ledgerPath, "utf8")
     .matchAll(/^### (L-\d+):/gm), (m) => m[1]));
   const candidates = [];
   const occurrences = new Map();
-  const commits = git("rev-list", "--first-parent", previous + ".." + current);
-  for (const sha of commits.split("\n").filter(Boolean)) {
+  for (const sha of commits) {
     const subject = git("show", "-s", "--format=%s", sha);
     if (!/^(?:fix(?:\([^)]+\))?!?:|revert(?:\([^)]+\))?!?:|Revert ")/i.test(subject)) continue;
     const ids = new Set(git("show", "-s", "--format=%(trailers:key=Lesson,valueonly)", sha)
