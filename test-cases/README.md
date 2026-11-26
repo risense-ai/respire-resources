@@ -516,6 +516,22 @@ the suite reads the compiled output and leaves its translations untouched.
 This mode covers the compiled WebUI against Mock Runtime. Native Wails and
 compiled Runtime integration require separate execution.
 
+Actual Client2 embeds multiple HTML entry points. The
+[compiled Client2 WebUI qualification](client2-e2e/compiled-webui/README.md)
+uses that actual product asset export and the real Wails bootstrap bytes,
+not the generic fixture described above. Its hosted Linux run passed all 32
+bilingual layout cases against Mock Runtime, with loaded data and loopback
+isolation. That result is separate from the 38 gallery cases.
+
+The [merged-product Windows qualification](https://github.com/risense-ai/respire-resources/actions/runs/45740798117)
+used product commit `4da41a593ea1663a8199b4b9a1475eb05b8620a8` and passed
+14 native screen-and-locale cases: Overview, Memories, Recall, Storage,
+Settings, Diary, and Accounts in English and Chinese. It used compiled Wails,
+compiled Runtime, and pinned Chromium with synthetic data on IPv4 loopback.
+The job verified its file manifest and firewall rules before launch, required
+independent scoped readback, and verified owned-process and firewall cleanup.
+This native evidence does not replace the separate 32 compiled WebUI layouts.
+
 ## Acceptance inventory
 
 | Requirement | Implemented checks | Outstanding evidence or implementation |
@@ -525,7 +541,7 @@ compiled Runtime integration require separate execution.
 | T05-04 Vault | [Pinned synthetic Vault v1-v4 vectors](fixtures/crypto/README.md) | All eight compiled Windows Runtime cases passed wrong/correct unlock and exact UTF-8 legacy `show`. Native credential retrieval and vector-ranked recall are separate. |
 | T05-05 transport | Windows HTTP/MCP in an owned UTF-8 NTFS junction, byte-exact payloads and concurrent store/recall, MCP framing, junction target preserved | Native compiled Windows junction cases passed. Online inactive-model uninstall, OneDrive-specific paths and zero lingering Paused locks are not attested. |
 | T05-05 CLI and legacy RPC | Native production-binary E2E-006 and E2E-007 smoke cases | Windows additionally exercises genuine scoped Codex injection and removal. Full CLI/TUI/other IDE coverage, model uninstall, and legacy model switch are still separate. |
-| T05-06 | Fixture validation and Playwright en/zh Mock Render (38 passed); compiled WebUI mode available | [Hosted Windows Session Import preview](client2-e2e/session-import-hosted-evidence.md) passed using real Wails and Runtime. The general compiled fixture, native packaging, and cross-platform integration remain separate. |
+| T05-06 | Fixture validation and gallery Playwright (38 passed); [actual compiled Client2 WebUI + Mock Runtime](client2-e2e/compiled-webui/README.md) (32 passed) | Native Windows checks cover the 14 screen/locale cases above and the separate [Session Import preview](client2-e2e/session-import-hosted-evidence.md). Native packaging and cross-platform integration are separate. |
 
 The Change 005 Windows large-payload scenario maps to
 [windows.mjs](plugin-rpc/windows.mjs). Its legacy compatibility scenario is
