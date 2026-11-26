@@ -81,8 +81,23 @@ export function stockLayoutDiagnostic(size, issues) {
 
 // Match the stock clipped-button predicate exactly, exporting only a
 // bounded ordinal and four geometry values. Never read a name or text.
-export function measureStockClippedControls() {
+export function measureStockClippedControls({name,selector}) {
   const result=[];
+  const surface=document.querySelector(selector);
+  const roleFor=control=>{
+    if(!surface?.contains(control))return "shared-button";
+    if(name==="diary"){
+      if(control.matches("button.calendar-day[data-day]"))return "diary-day";
+      if(control.matches(".timeline-body button[data-entry]"))return "diary-entry";
+      if(control.matches(".memory-toolbar button[data-prev],.memory-toolbar button[data-next],.memory-toolbar button[data-today]"))return "diary-month";
+      if(control.matches(".memory-toolbar button[data-search]"))return "diary-search";
+    }
+    if(control.matches("button.memory-title[data-select]"))return "memory-title";
+    if(control.matches("button.tree-toggle[data-expand]"))return "tree-toggle";
+    if(control.matches("button[data-search-submit]"))return "search-button";
+    if(name==="recall"&&control.matches("button[data-clear-search]"))return "recall-clear";
+    return control.closest(".memory-toolbar")?"toolbar":"button";
+  };
   const controls=document.querySelectorAll("main button, main select, main input, main textarea, [data-layout-icon]");
   for(let i=0;i<controls.length&&i<1024&&result.length<3;i++){
     const control=controls[i];
@@ -91,10 +106,7 @@ export function measureStockClippedControls() {
     if(scrollWidth>clientWidth+1||scrollHeight>clientHeight+1){
       const values=[i+1,scrollWidth,clientWidth,scrollHeight,clientHeight];
       if(values.every(value=>Number.isInteger(value)&&value>=0&&value<=99999))
-        result.push({issue:"clipped button",role:control.matches("button.memory-title[data-select]")?"memory-title":
-          control.matches("button.tree-toggle[data-expand]")?"tree-toggle":
-          control.matches("button[data-search-submit]")?"search-button":
-          control.closest?.(".memory-toolbar")?"toolbar":"button",values});
+        result.push({issue:"clipped button",role:roleFor(control),values});
     }
   }
   return result;
@@ -145,10 +157,10 @@ export function bindCompiledLayoutProof(page){
               assert.equal(stock.issues.length,0,"Stock layout checks found an issue");
             } catch(error) {
               error.productLayout = stockLayoutDiagnostic(size,stock.issues);
-              if(name==="workspace"&&size.width===1024&&size.height===768&&
+              if(["workspace","recall","diary"].includes(name)&&size.width===1024&&size.height===768&&
                   error.productLayout?.details.some(x=>x.issue==="clipped button")){
                 try{
-                  const controls=await page.evaluate(measureStockClippedControls);
+                  const controls=await page.evaluate(measureStockClippedControls,{name,selector:surface});
                   if(controls.length)error.productLayout.details=[
                     ...controls,...error.productLayout.details.filter(x=>x.issue!=="clipped button")
                   ].slice(0,3);

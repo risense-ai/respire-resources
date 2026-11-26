@@ -5,14 +5,15 @@ const phases = new Set(['browser-entry','browser-primary','browser-dispose-ops',
 const codes = new Set(['ERR_ASSERTION','ERR_INVALID_ARG_TYPE','ERR_STREAM_PREMATURE_CLOSE','ABORT_ERR','ENOENT','EPIPE','EACCES','EPERM','ETIMEDOUT','ECONNREFUSED']);
 const kinds = new Set(['Error','AssertionError','TimeoutError','AbortError','TypeError','SyntaxError']);
 const named = /^(?:positive-memory|diary-accounts|storage-settings|compiled-product|compiled-diary|compiled-storage)[-a-z]+\.mjs$/;
-const pattern = /^FIXTURE DIAGNOSTIC (?:[a-z-]{1,24}) (?:[0-9]{1,8})ms (?:[A-Za-z]{1,20}) (?:[A-Z_]{1,36}|none)(?: [a-z-]+\.mjs:[0-9]{1,5}){0,5}(?: layout=[0-9]{2,4}x[0-9]{2,4}(?: (?:missing|overflow|invalid-text|bounds|clipped|icon|font):(?:surface|button|select|input|textarea|icon|summary|stats|details|runtime|onboarding|memory-title|tree-toggle|search-button|toolbar|metric-(?:one|two|three|four)-note)(?:,-?[0-9]{1,5}(?:\.[0-9])?){0,5}){1,3})?(?: http=[1-5][0-9]{2})?$/;
+const pattern = /^FIXTURE DIAGNOSTIC (?:[a-z-]{1,24}) (?:[0-9]{1,8})ms (?:[A-Za-z]{1,20}) (?:[A-Z_]{1,36}|none)(?: [a-z-]+\.mjs:[0-9]{1,5}){0,5}(?: layout=[0-9]{2,4}x[0-9]{2,4}(?: (?:missing|overflow|invalid-text|bounds|clipped|icon|font):(?:surface|button|select|input|textarea|icon|summary|stats|details|runtime|onboarding|memory-title|tree-toggle|search-button|toolbar|shared-button|recall-clear|diary-(?:day|entry|month|search)|metric-(?:one|two|three|four)-note)(?:,-?[0-9]{1,5}(?:\.[0-9])?){0,5}){1,3})?(?: http=[1-5][0-9]{2})?$/;
 const layoutNames = new Map([
   ['missing product surface','missing'], ['horizontal overflow','overflow'],
   ['unresolved visible string or invalid number','invalid-text'], ['control bounds','bounds'],
   ['clipped button','clipped'], ['misaligned control icon','icon'], ['root font outside rem scale','font']
 ]);
 const layoutRoles = new Set(['surface','button','select','input','textarea','icon','summary','stats','details','runtime','onboarding',
-  'metric-one-note','metric-two-note','metric-three-note','metric-four-note','memory-title','tree-toggle','search-button','toolbar']);
+  'metric-one-note','metric-two-note','metric-three-note','metric-four-note','memory-title','tree-toggle','search-button','toolbar',
+  'shared-button','recall-clear','diary-day','diary-entry','diary-month','diary-search']);
 function layoutSuffix(proof) {
   const {width,height} = proof?.size ?? {};
   if (![width,height].every(v=>Number.isInteger(v)&&v>=10&&v<=9999) || !Array.isArray(proof?.details)) return '';

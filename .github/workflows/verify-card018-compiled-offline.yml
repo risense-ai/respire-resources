@@ -14,7 +14,7 @@ jobs:
     if: >-
       github.repository == 'risense-ai/respire-resources' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
-      github.event.pull_request.head.ref == 'verify/card-018-offline-recall-and-layout-evidence' &&
+      github.event.pull_request.head.ref == 'verify/card-018-offline-stock-control-roles' &&
       github.event.pull_request.draft == true &&
       github.event.label.name == 'card018-compiled-client2-proof' &&
       github.run_attempt == 1
