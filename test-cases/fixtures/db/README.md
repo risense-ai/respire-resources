@@ -61,3 +61,9 @@ exactly through upgrade and a second open. The portable snapshot contains both
 memories but excludes the share grant by design and leaves the source intact.
 The portable snapshot probe does not assert portable sync, review, or query
 state. The snapshot copies and newly generated credential data stay disposable.
+
+## Comprehensive dev.17-derived Golden
+
+Run `python3 test-cases/fixtures/db/verify_comprehensive.py`. The reader verifies the fixture digest, regenerates a temporary copy from the two pinned inputs, compares every column of the seven populated tables and checks the released schema, 29 triggers, foreign keys, marker 0 and SQLite quick check. SQLite 3.53.1 additionally requires byte-identical regeneration. The released dev.17 constructor produced the empty parent. The deterministic recipe added the encrypted TEXT-ID memory, review, grant, query and skill run. The released insert triggers generated the pending outbox and creation audit using synthetic time and entropy. For an additional copy, pass the empty parent, row JSON and a fresh output path to `seed_comprehensive.py`.
+
+The reader exercises SQLite only. Product preservation of this comprehensive fixture through startup remains unverified. The genuine marker transition on the historical v1.0.10 fixture has its own [Linux receipt](https://github.com/risense-ai/respire-resources/actions/runs/45775347998/job/139757554067).
