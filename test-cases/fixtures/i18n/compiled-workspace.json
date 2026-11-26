@@ -1,0 +1,70 @@
+{
+  "overview": {
+    "en": "Memory, always ready.",
+    "zh": "记忆，保持就绪。"
+  },
+  "workspace": {
+    "en": "Your memory, clearly visible.",
+    "zh": "你的记忆，清晰可见。"
+  },
+  "recall": {
+    "en": "Back to tree",
+    "zh": "返回目录"
+  },
+  "diary": {
+    "en": "Keep daily activity on a calendar.",
+    "zh": "把日常，留在日历里。"
+  },
+  "accounts": {
+    "en": "Account & workspace",
+    "zh": "账户与工作区"
+  },
+  "storage": {
+    "en": "Runtime data directory",
+    "zh": "Runtime 数据目录"
+  },
+  "settings": {
+    "en": "Settings",
+    "zh": "设置"
+  },
+  "grants": {
+    "en": "Control memory access scope.",
+    "zh": "控制记忆的访问范围。"
+  },
+  "space-members": {
+    "en": "Space members",
+    "zh": "空间成员"
+  },
+  "injection": {
+    "en": "Install prompts and plugins.",
+    "zh": "安装提示词与插件。"
+  },
+  "stats": {
+    "en": "Local recall statistics",
+    "zh": "本地召回统计"
+  },
+  "statsMetric": {
+    "en": "Recalls today",
+    "zh": "今日召回"
+  },
+  "wizard": {
+    "en": "Do you want to use your memories on other devices?",
+    "zh": "要在其他设备上使用你的记忆吗？"
+  },
+  "organize": {
+    "en": "Put every memory in its place.",
+    "zh": "让记忆各归其位。"
+  },
+  "organizeState": {
+    "en": "Key configuration required",
+    "zh": "需要配置密钥"
+  },
+  "session-import": {
+    "en": "Session import.",
+    "zh": "会话导入。"
+  },
+  "models": {
+    "en": "Models & Index",
+    "zh": "模型与索引"
+  }
+}
