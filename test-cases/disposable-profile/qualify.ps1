@@ -1,14 +1,16 @@
+param([switch]$RuntimeCases)
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
 if ($env:RUNNER_OS -ne 'Windows' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or $env:RUNNER_ARCH -ne 'X64' -or $env:GITHUB_RUN_ATTEMPT -ne '1') { throw 'Unsupported qualification runner' }
 $controls = (Resolve-Path controls/test-cases/plugin-rpc/disposable).Path
 $stage = Join-Path $env:RUNNER_TEMP ('profile-qualification-' + $env:GITHUB_RUN_ID)
 [void](New-Item -ItemType Directory -Path $stage)
-$testExe = (Resolve-Path staged/host.test.exe).Path
+$testExe = if ($RuntimeCases) { (Resolve-Path staged/rsrs-runtime.exe).Path } else { (Resolve-Path staged/host.test.exe).Path }
+$runner = (Resolve-Path test-cases/runner.mjs).Path
 $manifest = (Resolve-Path staged/manifest.json).Path
 if ((Get-FileHash $manifest).Hash.ToLowerInvariant() -cne $env:MANIFEST_SHA) { throw 'Invalid preparation manifest' }
 $m = Get-Content -Raw $manifest | ConvertFrom-Json
-if ($m.product -cne '3a4e001b966630161af71f712731ac1572e02328' -or $m.run -cne $env:GITHUB_RUN_ID -or (Get-FileHash $testExe).Hash.ToLowerInvariant() -cne $m.exe) { throw 'Invalid test binary binding' }
+if ($m.product -cne 'd7db37e6f44ff13205642bd65c8b5af000f35a34' -or $m.run -cne $env:GITHUB_RUN_ID -or (Get-FileHash $testExe).Hash.ToLowerInvariant() -cne $m.exe) { throw 'Invalid test binary binding' }
 $node = (Get-Command node.exe -CommandType Application).Source
 $powershell = Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
 $icacls = Join-Path $env:SystemRoot 'System32/icacls.exe'
@@ -70,6 +72,18 @@ try {
   if ((Get-Volume -FilePath $testTemp).FileSystem -ine 'NTFS') { throw 'NTFS required' }
   $cases = @('TestNewBindsConfiguredJunctionToPhysicalProfile','TestNewRefusesMissingProfileBelowOwnedJunction','TestNewRefusesJunctionAsProfileLeaf','TestRequestLedgerRefusesReplacedClientDirectory','TestReplacedProfileStopsServingAndModelControls')
   $allowed = [string[]]@($testExe,$powershell,$icacls,$conhost)
+  if ($RuntimeCases) {
+    $log = Join-Path $stage 'compiled-scenarios.log'
+    $allowed = [string[]]@($node,$testExe,$powershell,$conhost)
+    $code = [Card018OwnedJob]::Run($node,[string[]]@($runner,'--runtime-bin',$testExe,'--synthetic-ready'),$testTemp,$log,$allowed,420000)
+    if ((Get-Item $log).Length -gt 65536) {throw 'Unexpected scenario log size'}
+    $lines = @(Get-Content -LiteralPath $log)
+    $lines | Where-Object { $_ -cmatch '^(PASS|FAIL|SKIP) COMPILED (RUNTIME|LEGACY RPC|CLI) E2E-00[1-7] |^SUMMARY ' } | ForEach-Object { Write-Output ($_.Replace($testTemp,'<fixture>')) }
+    foreach ($case in 'E2E-001','E2E-005') {
+      if (@($lines | Where-Object { $_ -cmatch ('^PASS COMPILED RUNTIME '+$case+' ') }).Count -ne 1) { throw ('Missing compiled scenario '+$case) }
+    }
+    if ($code -ne 0) { throw ('Compiled runner reported failure: '+$code) }
+  } else {
   foreach ($case in $cases) {
     $log = Join-Path $stage ($case + '.log')
     $code = [Card018OwnedJob]::Run($testExe,[string[]]@('-test.v',('-test.run=^'+$case+'$'),'-test.count=1','-test.timeout=90s'),$testTemp,$log,$allowed,120000)
@@ -80,6 +94,7 @@ try {
       throw ('Native case did not pass: '+$case+' exit='+$code+' '+($diagnostic -join ' '))
     }
     Write-Output ('PASS exact Windows NTFS case '+$case)
+  }
   }
   foreach ($entry in $installed) { ConfirmProgram $entry.Program $entry.V4 $entry.V6 }
 } finally {

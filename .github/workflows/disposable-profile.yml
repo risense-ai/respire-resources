@@ -16,7 +16,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: risense-ai/respire
-          ref: 3a4e001b966630161af71f712731ac1572e02328
+          ref: d7db37e6f44ff13205642bd65c8b5af000f35a34
           persist-credentials: false
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
@@ -28,7 +28,7 @@ jobs:
           $ErrorActionPreference='Stop'
           $PSNativeCommandUseErrorActionPreference=$true
           $sha=(git rev-parse HEAD)
-          if ($sha -cne '3a4e001b966630161af71f712731ac1572e02328') {throw 'Wrong product commit'}
+          if ($sha -cne 'd7db37e6f44ff13205642bd65c8b5af000f35a34') {throw 'Wrong product commit'}
           $stage=Join-Path $env:RUNNER_TEMP 'profile-test-build'
           [void](New-Item -ItemType Directory -Path $stage)
           Push-Location packages/runtime-sdk-go
@@ -68,3 +68,61 @@ jobs:
         env:
           MANIFEST_SHA: ${{ needs.build.outputs.manifest }}
         run: ./test-cases/disposable-profile/qualify.ps1
+  build_runtime:
+    if: github.event.pull_request.draft && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'verify/card018-profile-admission' && github.event.label.name == 'card018-native-junction-proof' && github.run_attempt == 1
+    runs-on: windows-2025
+    timeout-minutes: 50
+    outputs:
+      manifest: ${{ steps.build.outputs.manifest }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: risense-ai/respire
+          ref: d7db37e6f44ff13205642bd65c8b5af000f35a34
+          persist-credentials: false
+      - id: build
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $PSNativeCommandUseErrorActionPreference=$true
+          $sha=(git rev-parse HEAD)
+          if ($sha -cne 'd7db37e6f44ff13205642bd65c8b5af000f35a34') {throw 'Wrong product commit'}
+          $stage=Join-Path $env:RUNNER_TEMP 'profile-test-build'
+          [void](New-Item -ItemType Directory -Path $stage)
+          rustup toolchain install 1.95.0 --profile minimal
+          $target=Join-Path $env:RUNNER_TEMP 'card018-runtime-target'
+          cargo +1.95.0 build --locked --manifest-path apps/runtime/Cargo.toml --target-dir $target -p respire_runtime --bin rsrs-runtime
+          Copy-Item (Join-Path $target 'debug/rsrs-runtime.exe') (Join-Path $stage 'rsrs-runtime.exe')
+          $manifest=Join-Path $stage 'manifest.json'
+          @{product=$sha;run=$env:GITHUB_RUN_ID;exe=(Get-FileHash (Join-Path $stage 'rsrs-runtime.exe')).Hash.ToLowerInvariant()} | ConvertTo-Json -Compress | Set-Content -Encoding utf8NoBOM $manifest
+          ('manifest='+(Get-FileHash $manifest).Hash.ToLowerInvariant()) >> $env:GITHUB_OUTPUT
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: exact-runtime
+          path: ${{ runner.temp }}/profile-test-build
+          retention-days: 1
+          if-no-files-found: error
+  qualify_runtime:
+    needs: build_runtime
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: risense-ai/respire-resources
+          ref: 1c060bcd958b5801f3c41a8542f98647d2a4b23e
+          path: controls
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: exact-runtime
+          path: staged
+      - name: Verify and run offline under the owned Windows job
+        shell: pwsh
+        env:
+          MANIFEST_SHA: ${{ needs.build_runtime.outputs.manifest }}
+        run: ./test-cases/disposable-profile/qualify.ps1 -RuntimeCases
