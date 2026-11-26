@@ -22,7 +22,6 @@ jobs:
     env:
       PRODUCT_SHA: 20f02cb32d55b3081855651b512bcd9e8a27cf79
       WAILS_SHA: 7b11001b92b712210b27d8cb53430e83f67ad8e4
-      PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/card018-browser-1194
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
@@ -51,6 +50,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          export PLAYWRIGHT_BROWSERS_PATH="$RUNNER_TEMP/card018-browser-1194"
           test "$(git -C exact-product rev-parse HEAD)" = "$PRODUCT_SHA"
           test "$(git -C exact-wails rev-parse HEAD)" = "$WAILS_SHA"
           export RESPIRE_E2E_EXPORT_WEBUI_DIR="$RUNNER_TEMP/card018-embedded-webui"
@@ -68,6 +68,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          export PLAYWRIGHT_BROWSERS_PATH="$RUNNER_TEMP/card018-browser-1194"
           root="$PWD/test-cases/client2-e2e/compiled-webui"
           export NODE_PATH="$root/toolchain/node_modules"
           export RESPIRE_E2E_WEBUI_BUNDLE="$RUNNER_TEMP/card018-embedded-webui"
