@@ -27,6 +27,7 @@ async function check(browser,surface,locale){
   const {app,observed,count,operations,receipts,deniedRequests}=quickPanelAdapter(assets,{locale,surface,wails});
   const context=await browser.newContext({serviceWorkers:"block",viewport:viewports.desktop,locale,timezoneId:"UTC"});
   const failures=[];
+  let layoutDiagnostic=[];
   let phase="start",checkpoint="boot";
   const record=code=>{if(failures.length<8)failures.push(code);};
   try{
@@ -215,9 +216,38 @@ async function check(browser,surface,locale){
         assert.equal(await view.locator('select[name="diary"]').inputValue(),agentMode.diary_mode);
         assert(operations.has("agent_config"),"Missing actual Settings configuration load");
       }
-      checkpoint="stock-layout";
+      checkpoint="layout-fonts";
       await page.evaluate(()=>document.fonts.ready.then(()=>{}));
+      checkpoint="stock-layout";
       const stock=await page.evaluate(measureLayout);
+      if(surface==="models"&&stock.issues.length>0){
+        layoutDiagnostic=await page.evaluate(()=>{
+          const root=document.documentElement;
+          const issues=[];
+          if(root.scrollWidth>root.clientWidth+1)issues.push({kind:"horizontal-overflow"});
+          const groups=["[data-mode-select]","[data-variants]","[data-recall]","[data-status-card]","[data-primary-action]",
+            "[data-advanced]","[data-mode-selector]",".page-heading",".panel"];
+          for(const [index,control] of Array.from(document.querySelectorAll(
+            "main button, main select, main input, main textarea, [data-layout-icon]")).entries()){
+            if(!control.getClientRects().length)continue;
+            const box=control.getBoundingClientRect();
+            const bounds=box.left< -1||box.right>root.clientWidth+1||box.width<=0||box.height<=0;
+            const clipped=control.matches("button")&&(control.scrollWidth>control.clientWidth+1||
+              control.scrollHeight>control.clientHeight+1);
+            const icon=control.querySelector("svg,[data-layout-icon]")?.getBoundingClientRect();
+            const align=icon&&Math.abs((icon.top+icon.bottom-box.top-box.bottom)/2)>2;
+            if(bounds||clipped||align)issues.push({index,tag:control.tagName,
+              group:groups.find(selector=>control.closest(selector))??"unclassified",
+              kind:bounds?"control-bounds":clipped?"button-clipping":"icon-alignment",
+              contentWidth:control.scrollWidth,width:control.clientWidth,
+              contentHeight:control.scrollHeight,height:control.clientHeight});
+          }
+          return issues.slice(0,8);
+        });
+        for(const code of ["visible invalid number or unresolved translation","root font outside rem scale"]){
+          if(stock.issues.includes(code))layoutDiagnostic.push({kind:code});
+        }
+      }
       assert.deepEqual(stock.issues,[],"Stock layout issues");
       if(members||surface==="wizard"){
         const outside=members?dialog:wizard;
@@ -262,7 +292,7 @@ async function check(browser,surface,locale){
   }catch(error){
     const counts=Object.fromEntries(Object.entries(observed).map(([key,value])=>[key,Math.min(value,999)]));
     console.error("WORKSPACE FIXTURE DIAGNOSTIC "+JSON.stringify({
-      surface,locale,phase,checkpoint,counts,receipts:receipts(),denied:deniedRequests,events:failures,
+      surface,locale,phase,checkpoint,counts,receipts:receipts(),denied:deniedRequests,events:failures,layout:layoutDiagnostic,
     }));
     throw error;
   }finally{
