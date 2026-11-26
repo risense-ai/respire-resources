@@ -10,7 +10,7 @@ $runner = (Resolve-Path test-cases/runner.mjs).Path
 $manifest = (Resolve-Path staged/manifest.json).Path
 if ((Get-FileHash $manifest).Hash.ToLowerInvariant() -cne $env:MANIFEST_SHA) { throw 'Invalid preparation manifest' }
 $m = Get-Content -Raw $manifest | ConvertFrom-Json
-if ($m.product -cne 'd7db37e6f44ff13205642bd65c8b5af000f35a34' -or $m.run -cne '45765454095' -or (Get-FileHash $testExe).Hash.ToLowerInvariant() -cne $m.exe) { throw 'Invalid test binary binding' }
+if ($m.product -cne '385534a5e00fda96aa9a50a0242518ac9b6d14aa' -or $m.run -cne $env:GITHUB_RUN_ID -or (Get-FileHash $testExe).Hash.ToLowerInvariant() -cne $m.exe) { throw 'Invalid test binary binding' }
 $node = (Get-Command node.exe -CommandType Application).Source
 $powershell = Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
 $icacls = Join-Path $env:SystemRoot 'System32/icacls.exe'
