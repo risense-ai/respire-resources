@@ -37,7 +37,7 @@ measurement, with the stock Quick Panel viewport/checks and extra shell
 control checks. The negative proves failed status cannot qualify as loaded
 content even when the product can render a fallback.
 
-## Workspace cut: Overview, Memories and Recall
+## Workspace cut: Overview, Memories, Recall, Diary, Accounts, Storage and Settings
 
 Set `RESPIRE_E2E_WAILS_RUNTIME` to the verified production asset from the
 actual Client2-locked Wails module `github.com/wailsapp/wails/v3 v3.0.0`
@@ -48,11 +48,15 @@ prelude. We neither synthesize nor patch this byte stream. The optional
 server-script HEAD request correctly returns the same 404 as normal
 desktop Wails. Other Wails calls are unsupported and fail.
 
-This incremental cut adds six browser cases to the two Quick Panel cases.
+This cut adds fourteen browser cases to the two Quick Panel cases.
 Each Workspace case tests both desktop viewports, ready data, independent
 bilingual localized captions, stock layout, no app/asset errors, and fluid
 rem scaling. Recall requires actual Enter submission, the typed Mock
 positive terminal and the genuine matching title, not a look-alike page.
+Diary uses a pinned isolated calendar date and real read operation; Accounts
+separates fixture-local host account and typed Mock library. Storage and
+Settings navigate from loaded Overview and validate the actual path,
+theme and non-default runtime mode without a write.
 
 Provision local Go 1.26, Playwright 1.56.1 and its reviewed Chromium Linux
 revision 1194 or approved pinned WebKit before starting the browser.
@@ -71,4 +75,4 @@ unshare -Urn python3 test-cases/client2-e2e/compiled-webui/loopback-only-exec.py
 The launcher checks the absence of other interfaces and on-link routes
 before and after bringing up its private loopback. Do not rerun on a network
 or home containing production credentials if the namespace setup fails.
-The four surfaces do not certify the other twelve or the complete matrix.
+The eight surfaces do not certify the other eight or the complete matrix.

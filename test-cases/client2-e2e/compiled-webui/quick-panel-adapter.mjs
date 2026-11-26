@@ -4,7 +4,7 @@ import {createHash} from "node:crypto";
 import {lstat,readFile,readdir,realpath} from "node:fs/promises";
 import {extname,isAbsolute,join,resolve} from "node:path";
 import "../../../prototypes/mock-api/fixture.js";
-import {workspaceMock} from "./workspace-mock.mjs";
+import {dataDir,localUser,settingsTheme,workspaceMock} from "./workspace-mock.mjs";
 
 const commit=/^[a-f0-9]{40}$/;
 const sha256=/^[a-f0-9]{64}$/;
@@ -108,14 +108,15 @@ export function quickPanelAdapter(assets,{locale,failStatus=false,surface="quick
       if(url.search||url.pathname!==req.url)return deny(req,res,400);
       if(req.method==="GET"&&url.pathname==="/api/state"){
         observed.state++;
-        return ok(res,{connected:true,platform:"linux",version:"fixture",preferences:{language:locale,onboardingCompleted:true},
+        return ok(res,{connected:true,platform:"linux",version:"fixture",preferences:{language:locale,onboardingCompleted:true,...(workspace?.settings&&{theme:settingsTheme})},
           health:{bin:"synthetic-runtime",inference:{phase:"ready",queued:0}}});
       }
       if(req.method==="GET"&&url.pathname==="/api/runtime-status"){
         observed.status++;
         if(failStatus)return response(res,503,{ok:false,error:"Synthetic status deliberately unavailable"});
         return ok(res,{summary:{local_alive:status.memory_count,local_total:status.memory_count,
-          unlocked:true,session:{has_token:true},retrieval_index:{state:"ready"},sync_live:{phase:"idle",remote_alive:0,pending:0,conflicts:0}}});
+          unlocked:true,...(workspace&&{data_dir:dataDir}),
+          session:{has_token:true,...(surface==="accounts"&&{user:localUser,has_local_keys:true})},retrieval_index:{state:"ready"},sync_live:{phase:"idle",remote_alive:0,pending:0,conflicts:0}}});
       }
       if(workspace){
         if(req.method==="HEAD"&&url.pathname==="/wails/custom.js"){
@@ -125,8 +126,8 @@ export function quickPanelAdapter(assets,{locale,failStatus=false,surface="quick
         if(req.method==="GET"&&url.pathname==="/wails/runtime.js")
           return res.writeHead(200,{"Content-Type":"text/javascript"}).end(wails);
         if(req.method==="GET"&&url.pathname==="/api/operations")return ok(res,[]);
-        if(req.method==="GET"&&url.pathname==="/api/inject-targets"&&surface==="overview")return ok(res,{targets:[]});
-        if(req.method==="GET"&&url.pathname==="/api/model-profile-state"&&surface==="overview")return ok(res,workspace.modelProfile);
+        if(req.method==="GET"&&url.pathname==="/api/inject-targets"&&workspace.overviewBootstrap)return ok(res,{targets:[]});
+        if(req.method==="GET"&&url.pathname==="/api/model-profile-state"&&workspace.overviewBootstrap)return ok(res,workspace.modelProfile);
         if(req.method==="POST"&&["/api/execute","/api/operation-ack"].includes(url.pathname)){
           if(req.headers.origin!==origin||req.headers["x-respire-client"]!=="1"||
               req.headers["content-type"]!=="application/json")return deny(req,res,403);

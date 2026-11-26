@@ -10,5 +10,21 @@
   "recall": {
     "en": "Back to tree",
     "zh": "返回目录"
+  },
+  "diary": {
+    "en": "Keep daily activity on a calendar.",
+    "zh": "把日常，留在日历里。"
+  },
+  "accounts": {
+    "en": "Account & workspace",
+    "zh": "账户与工作区"
+  },
+  "storage": {
+    "en": "Runtime data directory",
+    "zh": "Runtime 数据目录"
+  },
+  "settings": {
+    "en": "Settings",
+    "zh": "设置"
   }
 }

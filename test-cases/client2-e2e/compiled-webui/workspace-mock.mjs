@@ -16,16 +16,29 @@ export async function verifyWailsRuntime(path){
 }
 export const needle="CARD018 unique needle";
 export const marker="CARD018 fixture: retained note";
+export const diaryDay="2026-11-23";
+const diaryStart=diaryDay.slice(0,8)+"01";
+const diaryEnd=diaryDay.slice(0,8)+"30";
+export const diaryTitle="CARD018 synthetic journal";
+export const dataDir="/synthetic-card018/runtime-data";
+export const accountName="CARD018 local account";
+export const localUser="card018-fictitious-user";
+export const mainSpace="Studio notebook";
+export const agentMode={workspace_mode:"readonly",diary_mode:"verbose"};
+export const settingsTheme="dark";
 
 export function workspaceMock(surface){
-  assert(["overview","workspace","recall"].includes(surface));
-  const memory=surface!=="overview";
+  assert(["overview","workspace","recall","diary","accounts","storage","settings"].includes(surface));
+  const memory=["workspace","recall"].includes(surface);
+  const settings=["storage","settings"].includes(surface);
+  const overviewBootstrap=surface==="overview"||settings;
   const fixture=globalThis.RespireFixture.create(memory?"empty":"rich-1k");
   const call=(method,path,body,headers)=>fixture.request(method,path,body,headers).data;
   if(memory){
     call("POST","/v1/host/transactions/login",{mode:"offline_keygen"});
     call("POST","/v1/memories",{title:marker,content:needle});
   }
+  if(surface==="diary")call("POST","/v1/diary",{date:diaryDay,content:diaryTitle});
   const health=call("GET","/v1/health");
   const status=call("GET","/v1/status/light");
   assert.equal(health.status,"ready");
@@ -51,15 +64,19 @@ export function workspaceMock(surface){
     switch(name){
       case "diary_list":
         assert(/^\d{4}-\d{2}-\d{2}$/.test(args?.from??""));
-        matches(args,{from:args.from,to:args.from});
-        envelope={details:call("GET","/v1/diary?date="+args.from).entries};
+        const month=surface==="diary"&&args.from===diaryStart;
+        if(month)matches(args,{from:diaryStart,to:diaryEnd});
+        else matches(args,{from:args.from,to:args.from});
+        const diary=call("GET","/v1/diary?date="+(month?diaryDay:args.from)).entries;
+        envelope={details:diary.map(item=>({id:item.id,day:item.date,title:item.content,
+          content:item.content,created_at:item.updated_at}))};
         break;
       case "organize_suggestions":
         matches(args,{top:50});
         envelope={details:{suggests:call("GET","/v1/organize/suggestions?top=50").suggestions}};
         break;
       case "query_log":
-        assert(!memory);
+        assert(overviewBootstrap);
         matches(args,{stats:true,limit:1});
         envelope={details:call("GET","/v1/query-log?limit=1",{},
           {authorization:"Bearer "+lease.access_token}).stats};
@@ -81,6 +98,25 @@ export function workspaceMock(surface){
         envelope={details:call("POST","/v1/memories/recall",{query:needle,top_k:50}).hits.map(hit=>hit.memory)};
         assert.deepEqual(envelope.details.map(item=>item.title),[marker]);
         break;
+      case "account_list":
+        assert(surface==="accounts");
+        matches(args,{});
+        // Accounts are desktop host profiles, not Runtime libraries.
+        envelope={summary:{accounts:[{name:accountName,user:localUser,dir:dataDir,current:true}]}};
+        break;
+      case "space_list": {
+        assert(surface==="accounts");
+        matches(args,{});
+        const {spaces}=call("GET","/v1/spaces");
+        assert(spaces.some(item=>item.name===mainSpace&&item.active));
+        envelope={summary:{spaces:spaces.map(({name,role,active})=>({name,role,current:active}))}};
+        break;
+      }
+      case "agent_config":
+        assert(settings);
+        matches(args,{});
+        envelope={summary:{...agentMode}};
+        break;
       default:assert.fail("Unexpected read operation");
     }
     operations.add(name);
@@ -97,7 +133,7 @@ export function workspaceMock(surface){
     return "Acknowledged";
   }
   const receipts=()=>({issued,acknowledged,pending:pending.size});
-  return {status,operations,execute,acknowledge,receipts,modelProfile:{catalog:{details:{active:{
+  return {status,operations,execute,acknowledge,receipts,overviewBootstrap,settings,modelProfile:{catalog:{details:{active:{
     model:catalog.active_model_id,variant:"quantized",engine:"cpu",
   }}}}};
 }

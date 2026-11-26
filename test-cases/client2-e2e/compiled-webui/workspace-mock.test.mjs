@@ -77,3 +77,39 @@ test("acks consume only known terminal read IDs, once, without weakening route g
   assert.deepEqual(deniedRequests,["POST:operation-ack:400","POST:operation-ack:403",
     "POST:operation-ack:400","POST:operation-ack:400","POST:execute:400","POST:other:400"]);
 });
+
+test("Diary's genuine typed data matches only explicit calendar range and startup day",()=>{
+  const diary=workspaceMock("diary");
+  const {details}=exec(diary,"diary_list",{from:"2026-11-01",to:"2026-11-30"}).envelope;
+  assert.equal(details.length,1);
+  assert.deepEqual(details[0],{id:"day-2026-11-23",day:"2026-11-23",title:"CARD018 synthetic journal",
+    content:"CARD018 synthetic journal",created_at:"2026-11-23T09:30:00Z"});
+  assert.equal(exec(diary,"diary_list",{from:"2026-11-23",to:"2026-11-23"}).envelope.details.length,1);
+  assert.throws(()=>exec(diary,"diary_list",{from:"2026-11-01",to:"2026-12-01"}));
+  assert.throws(()=>exec(diary,"diary_list",{from:"2026-11-01",to:"2026-11-01"}));
+  assert.throws(()=>exec(workspaceMock("overview"),"diary_list",{from:"2026-11-01",to:"2026-11-30"}));
+  assert.throws(()=>exec(diary,"diary_search",{query:"not authorized"}));
+});
+
+test("Accounts keeps the host profile distinct from typed Mock spaces and rejects changes",()=>{
+  const account=workspaceMock("accounts");
+  assert.deepEqual(exec(account,"account_list",{}).envelope.summary.accounts.map(item=>[item.name,item.current]),
+    [["CARD018 local account",true]]);
+  assert.deepEqual(exec(account,"space_list",{}).envelope.summary.spaces.filter(item=>item.current).map(item=>item.name),
+    ["Studio notebook"]);
+  assert.throws(()=>exec(account,"account_list",{other:true}));
+  assert.throws(()=>exec(account,"account_use",{name:"other"}));
+  assert.throws(()=>exec(workspaceMock("overview"),"space_list",{}));
+});
+
+test("Storage/Settings bootstrap ready Overview then allow only a loaded read-only settings witness",()=>{
+  for(const surface of ["storage","settings"]){
+    const settings=workspaceMock(surface);
+    assert(settings.overviewBootstrap&&settings.settings);
+    assert.equal(typeof exec(settings,"query_log",{stats:true,limit:1}).envelope.details.total,"number");
+    assert.deepEqual(exec(settings,"agent_config",{}).envelope.summary,{workspace_mode:"readonly",diary_mode:"verbose"});
+    assert.throws(()=>exec(settings,"agent_set",{setting:"workspace_mode=normal"}));
+    assert.throws(()=>exec(settings,"data_dir_set",{dir:"/somewhere-else"}));
+  }
+  assert.throws(()=>exec(workspaceMock("overview"),"agent_config",{}));
+});
