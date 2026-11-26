@@ -219,3 +219,77 @@ test("respire-process.mjs --help lists lifecycle and review subcommands", () => 
     assert.ok(out.includes(sub), `help output missing subcommand: ${sub}`);
   }
 });
+
+test("verify-merge and evidence validation read only exact merge data through the CLI", (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "process-review-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const fixture = path.join(dir, "fixture.cjs");
+  fs.writeFileSync(fixture, `
+    const child = require("node:child_process");
+    const sha = "a".repeat(40);
+    const repo = "risense-ai/respire-resources";
+    const scenario = process.env.SCENARIO;
+    child.execFileSync = (file, args) => {
+      if (file !== "gh" || args[0] !== "api" || args.length > 3 || args.includes("-X")) {
+        throw Error("unexpected operation");
+      }
+      const endpoint = args.at(-1);
+      if (endpoint.endsWith("/pulls/10")) return JSON.stringify({
+        head: { sha }, state: "open", merged_at: "date", base: { ref: "main" },
+        merge_commit_sha: scenario === "wrong-merge" ? "b".repeat(40) : sha,
+        body: scenario === "ambiguous" ? "Part of #7" : "Fixes #7",
+        html_url: "https://github.com/" + repo + "/pull/10"
+      });
+      if (endpoint.includes("/issues?")) return JSON.stringify(endpoint.startsWith("repos/" + repo + "/")
+        ? [{ number: 7, state: "open", body: "<!-- respire-card\\nid: CARD-020\\nchange: 006\\nmilestone: M6\\n-->" }] : []);
+      if (endpoint.includes("/issues/7/comments")) return "[]";
+      if (endpoint.includes("/issues/10/comments")) return JSON.stringify([{
+        body: "<!-- respire-verdict: PASS head=" + sha + " -->", user: { login: "luodaoyi" }
+      }]);
+      if (endpoint.includes("/check-runs")) return JSON.stringify({ check_runs: [
+        { name: scenario === "gate-only" ? "verdict-gate" : "test", status: "completed", conclusion: "success" }
+      ] });
+      if (endpoint.endsWith("/status")) return '{"statuses":[]}';
+      throw Error("unexpected endpoint " + endpoint);
+    };
+    require("node:module").syncBuiltinESMExports();
+  `);
+  const cli = path.join(ROOT, "process/scripts/respire-process.mjs");
+  function run(scenario, ...args) {
+    return execFileSync(process.execPath, ["--require", fixture, cli, ...args],
+      { cwd: dir, env: { ...process.env, SCENARIO: scenario }, encoding: "utf8", stdio: "pipe" });
+  }
+  const repo = "risense-ai/respire-resources";
+  const validate = ["evidence-register", "--repo", repo, "--sha", "a".repeat(40), "--pr", "10", "--validate-only"];
+  assert.match(run("valid", ...validate), /DRY-RUN/);
+  assert.throws(() => run("wrong-merge", ...validate), /Expected one exact merge/);
+  assert.throws(() => run("ambiguous", ...validate), /Expected one explicit card/);
+  assert.match(run("valid", "verify-merge", repo + "#10"), /READY_TO_MERGE/);
+  assert.throws(() => run("gate-only", "verify-merge", repo + "#10"), (err) =>
+    err.status === 2 && err.stdout.includes("no CI checks reported"));
+});
+
+test("lessons-audit counts independent fixes and reverts and reports missing ledger updates", (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "process-lessons-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const git = (...args) => execFileSync("git", ["-c", "user.name=Fixture", "-c",
+    "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false", ...args], { cwd: dir, encoding: "utf8" }).trim();
+  git("init", "-q");
+  git("commit", "--allow-empty", "-qm", "initial");
+  const base = git("rev-parse", "HEAD");
+  function audit() {
+    return JSON.parse(execFileSync(process.execPath, [path.join(ROOT, "process/scripts/respire-process.mjs"),
+      "lessons-audit", base, git("rev-parse", "HEAD")], { cwd: dir, encoding: "utf8" }));
+  }
+  for (const title of ["fix(cli): first", "revert: second", "docs: ignored"]) {
+    git("commit", "--allow-empty", "-qm", title, "-m", "Lesson: L-001\nLesson: L-001");
+  }
+  assert.deepEqual(audit().guardrails, []);
+  fs.writeFileSync(path.join(dir, "LESSONS.md"), "Test incident\n");
+  git("add", "LESSONS.md");
+  git("commit", "-qm", "fix: third", "-m", "Lesson: L-001");
+  const report = audit();
+  assert.deepEqual(report.candidates.map((item) => item.ledgerUpdated), [true, false, false]);
+  assert.deepEqual(report.guardrails, [{ lesson: "L-001", commits: report.candidates.map((item) => item.sha) }]);
+  assert.deepEqual(audit(), report);
+});

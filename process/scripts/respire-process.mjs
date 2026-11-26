@@ -10,6 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { classifyCard, fetchAllCards as fetchAllCardsFromApi } from "./lib/cards.mjs";
+import { auditLessons } from "./lib/lessons-audit.mjs";
 import { cmdArchiveNext, cmdEvidenceRegister, cmdReleaseCheck } from "./lib/lifecycle.mjs";
 import { cmdPostVerdict, cmdReviewNext, cmdVerifyMerge } from "./lib/pr-review.mjs";
 
@@ -469,6 +470,9 @@ switch (cmd) {
   case "post-verdict": cmdPostVerdict({ gh }, rest); break;
   case "verify-merge": cmdVerifyMerge({ gh, root: ROOT }, rest); break;
   case "evidence-register": cmdEvidenceRegister({ gh, root: ROOT, fetchAllCards, cmdSync }, rest); break;
+  case "lessons-audit":
+    console.log(JSON.stringify(auditLessons(process.cwd(), path.join(ROOT, "LESSONS.md"), ...rest), null, 2));
+    break;
   case "archive-next": cmdArchiveNext({ root: ROOT, fetchAllCards }, rest.includes("--json")); break;
   case "release-check": cmdReleaseCheck({ gh }, rest); break;
   case "complete": cmdComplete(rest); break;
@@ -487,7 +491,8 @@ switch (cmd) {
       "  review-next [--json]                        Discover next open PR needing review",
       "  post-verdict <pr-ref> --verdict <V> --summary \"<text>\"   Post head-SHA verdict",
       "  verify-merge <pr-ref> [--verdict-only] [--publish-status] Pre-merge verdict gate",
-      "  evidence-register --repo <r> --sha <sha> [--pr <n>]       Register post-merge Bot Evidence",
+      "  evidence-register --repo <r> --sha <sha> [--pr <n>] [--validate-only] Register post-merge Bot Evidence",
+      "  lessons-audit <base-sha> <main-sha>        Report fixes, reverts and three-strike candidates",
       "  archive-next [--json]                       Discover next fully closed Change to archive",
       "  release-check <runtime|cli|client2> <X.Y.Z> Pre-tag main CI & manifest gate",
       "  complete <CARD-XXX | ref> [--pr <url>]      Close card, post evidence & sync DAG",

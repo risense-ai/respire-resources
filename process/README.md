@@ -11,3 +11,19 @@ Central agent-agnostic engineering workflow assets shared across Respire reposit
 - **[roles/](roles/README.md)** — Six-role collaboration playbooks and permissions matrix.
 - **[templates/coderabbit.yaml](templates/coderabbit.yaml)** — Strict English-only CodeRabbit template shared by `respire` and `respire-core`.
 - **[templates/ISSUE_TEMPLATE.md](templates/ISSUE_TEMPLATE.md)** & **[templates/PULL_REQUEST_TEMPLATE.md](templates/PULL_REQUEST_TEMPLATE.md)** — Standard metadata templates.
+
+### Read-only procedure checks
+
+Run `evidence-register --validate-only` with the repository, full merge SHA
+and optional PR number through `node process/scripts/respire-process.mjs`.
+It requires an exact main merge and a single canonical completion declaration.
+It reads existing evidence and suppresses all registration and synchronization.
+
+Run `lessons-audit <base-sha> <main-sha>` through the same CLI from the
+checkout whose first-parent history is under review. Supply an exclusive base
+and inclusive main commit. The JSON report lists fixes and reverts, identifies
+changes to the root ledger and groups commits carrying a `Lesson: L-001` style
+Git trailer matching a heading in the resources ledger. Review unclassified
+candidates manually. Each distinct commit counts once per lesson. Use a range
+covering prior incidents to detect recurrence across nightly runs. Three
+occurrences propose a guardrail for review.

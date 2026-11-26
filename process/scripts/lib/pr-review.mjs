@@ -19,14 +19,13 @@ export function parsePrRef(arg) {
 export function getHeadCiStatus(gh, repo, sha) {
   const checksData = JSON.parse(gh(["api", `repos/${repo}/commits/${sha}/check-runs?per_page=100`]));
   const statusData = JSON.parse(gh(["api", `repos/${repo}/commits/${sha}/status`]));
-  const runs = checksData.check_runs || [];
+  const runs = (checksData.check_runs || []).filter((run) => run.name !== "verdict-gate");
   const statuses = (statusData.statuses || []).filter((s) => s.context !== "verdict-gate");
   const totalChecks = runs.length + statuses.length;
 
   let pendingCount = 0;
   const failedNames = [];
   for (const run of runs) {
-    if (run.name === "verdict-gate") continue;
     if (run.status !== "completed") {
       pendingCount += 1;
     } else if (!GREEN_CONCLUSIONS.has(run.conclusion)) {

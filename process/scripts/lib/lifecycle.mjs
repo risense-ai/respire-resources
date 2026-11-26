@@ -113,7 +113,9 @@ export function cmdEvidenceRegister({ gh, root, fetchAllCards, cmdSync }, args) 
   const sha = readFlag(args, "--sha");
   const explicitPr = readFlag(args, "--pr");
   const runId = readFlag(args, "--run-id");
-  const dryRun = args.includes("--dry-run");
+  const validateOnly = args.includes("--validate-only");
+  const dryRun = validateOnly || args.includes("--dry-run");
+  if (validateOnly && !/^[a-f0-9]{40}$/i.test(sha || "")) throw new Error("Expected full merge SHA");
 
   if (!repo || !sha) {
     console.error(
@@ -124,6 +126,7 @@ export function cmdEvidenceRegister({ gh, root, fetchAllCards, cmdSync }, args) 
 
   const agentsCfg = loadAgentsConfig(root);
   const prs = listMergedPrsForCommit(gh, repo, sha, explicitPr);
+  if (validateOnly && prs.length !== 1) throw new Error("Expected one exact merge into main");
   if (prs.length === 0) {
     console.log(`No merged PR into main associated with ${repo}@${sha.slice(0, 7)}; skipping Evidence registration.`);
     return;
@@ -133,6 +136,7 @@ export function cmdEvidenceRegister({ gh, root, fetchAllCards, cmdSync }, args) 
   let registered = 0;
   for (const pr of prs) {
     const card = matchCompletionCard(pr, repo, byRef);
+    if (validateOnly && !card) throw new Error("Expected one explicit card completion declaration");
     if (!card) {
       console.log(`Merged PR ${repo}#${pr.number} has no single explicit closing declaration for a canonical card; skipping.`);
       continue;
