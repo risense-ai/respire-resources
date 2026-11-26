@@ -4,7 +4,7 @@ import {readFile} from "node:fs/promises";
 import {createRequire} from "node:module";
 import {isAbsolute} from "node:path";
 import {measureLayout,viewports} from "../layout.mjs";
-import {quickPanelAdapter,verifyWebUIBundle} from "./quick-panel-adapter.mjs";
+import {quickPanelAdapter,requestID,verifyWebUIBundle} from "./quick-panel-adapter.mjs";
 import {marker,needle,verifyWailsRuntime} from "./workspace-mock.mjs";
 
 const require=createRequire(import.meta.url);
@@ -22,9 +22,10 @@ for(const surface of surfaces)assert(captions[surface]?.en&&captions[surface]?.z
 const errorSelector="#notice.error:not([hidden]),[data-runtime-error]:not([hidden]):not(:empty),.danger-text,.form-error";
 
 async function check(browser,surface,locale){
-  const {app,observed,count,operations}=quickPanelAdapter(assets,{locale,surface,wails});
+  const {app,observed,count,operations,receipts,deniedRequests}=quickPanelAdapter(assets,{locale,surface,wails});
   const context=await browser.newContext({serviceWorkers:"block",viewport:viewports.desktop,locale});
   const failures=[];
+  const record=code=>{if(failures.length<8)failures.push(code);};
   try{
     await once(app.listen(0,"127.0.0.1"),"listening");
     const origin="http://127.0.0.1:"+app.address().port;
@@ -32,21 +33,21 @@ async function check(browser,surface,locale){
     const route=surface==="overview"?"overview":"memories";
     await context.route("**/*",async request=>{
       if(new URL(request.request().url()).origin!==origin){
-        failures.push("Unexpected external request");
+        record("external-origin");
         await request.abort();
       }else await request.continue();
     });
     const page=await context.newPage();
-    page.on("pageerror",()=>failures.push("Page exception"));
+    page.on("pageerror",()=>record("page-exception"));
     page.on("console",message=>{
       if(message.type()!=="error")return;
       if(message.location().url===optional&&/failed to load resource/i.test(message.text()))return;
-      failures.push("Console error");
+      record("console-error");
     });
-    page.on("requestfailed",()=>failures.push("Failed asset or request"));
+    page.on("requestfailed",()=>record("request-failed"));
     page.on("response",response=>{
       if(response.status()>=400&&!(response.status()===404&&response.url()===optional&&
-        response.request().method()==="HEAD"))failures.push("Failed asset or request");
+        response.request().method()==="HEAD"))record(requestID(response.request().method(),new URL(response.url()).pathname)+":"+response.status());
     });
     const url=origin+"/workspace.html#"+route;
     const runtime=page.waitForResponse(response=>response.url()===origin+"/wails/runtime.js",{timeout:5000});
@@ -91,9 +92,21 @@ async function check(browser,surface,locale){
       assert.equal(await page.locator("#notice.error:not([hidden])").count(),0);
     }
     assert(observed.state>=1&&observed.status>=1,"Missing ready-state bridge requests");
+    const deadline=Date.now()+1000;
+    while((receipts().issued===0||receipts().pending>0)&&Date.now()<deadline)
+      await new Promise(resolve=>setTimeout(resolve,25));
+    assert(receipts().issued>0&&receipts().issued===receipts().acknowledged,
+      "Missing browser acknowledgement for owned terminal reads");
+    assert.equal(await page.locator("#notice.error:not([hidden])").count(),0);
     assert.equal(observed.denied,0);
     assert.deepEqual(failures,[]);
     console.log("PASS COMPILED WEBUI + MOCK RUNTIME "+surface+" "+locale+" 1440x900 1024x768");
+  }catch(error){
+    const counts=Object.fromEntries(Object.entries(observed).map(([key,value])=>[key,Math.min(value,999)]));
+    console.error("WORKSPACE FIXTURE DIAGNOSTIC "+JSON.stringify({
+      surface,locale,counts,receipts:receipts(),denied:deniedRequests,events:failures,
+    }));
+    throw error;
   }finally{
     try{await context.close();}finally{
       if(app.listening){app.closeAllConnections();await new Promise(resolve=>app.close(resolve));}

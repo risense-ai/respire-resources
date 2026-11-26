@@ -38,11 +38,15 @@ export function workspaceMock(surface){
     for(const [key,field] of Object.entries(expected))assert.equal(value[key],field);
   };
   const operations=new Set();
+  const pending=new Set();
+  const issuedIDs=new Set();
+  let issued=0,acknowledged=0;
   const catalog=call("GET","/v1/models/catalog");
   function execute(body){
     const {name,args,id}=body;
     assert.deepEqual(Object.keys(body).sort(),["args","confirmed","id","name","secret"]);
     assert(body.confirmed===true&&body.secret===""&&/^desktop-[0-9a-f-]{36}$/.test(id));
+    assert(issued<32&&!issuedIDs.has(id),"Read operation receipt budget exceeded");
     let envelope;
     switch(name){
       case "diary_list":
@@ -80,9 +84,20 @@ export function workspaceMock(surface){
       default:assert.fail("Unexpected read operation");
     }
     operations.add(name);
+    pending.add(id);
+    issuedIDs.add(id);
+    issued++;
     return {id,name,state:"done",envelope};
   }
-  return {status,operations,execute,modelProfile:{catalog:{details:{active:{
+  function acknowledge(body){
+    assert(body&&Object.keys(body).join(",")==="id"&&typeof body.id==="string","Invalid acknowledgement");
+    assert(pending.delete(body.id),"Acknowledgement has no owned terminal receipt");
+    acknowledged++;
+    // Production discards a terminal read from the host operation ledger.
+    return "Acknowledged";
+  }
+  const receipts=()=>({issued,acknowledged,pending:pending.size});
+  return {status,operations,execute,acknowledge,receipts,modelProfile:{catalog:{details:{active:{
     model:catalog.active_model_id,variant:"quantized",engine:"cpu",
   }}}}};
 }

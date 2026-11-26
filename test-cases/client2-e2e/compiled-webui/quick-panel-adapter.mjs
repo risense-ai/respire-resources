@@ -63,6 +63,18 @@ export async function verifyWebUIBundle(directory,source,manifestSHA){
 
 const mime=new Map([[".html","text/html"],[".css","text/css"],[".js","text/javascript"],
   [".svg","image/svg+xml"],[".woff2","font/woff2"],[".woff","font/woff"]]);
+const requestIDs=new Map([
+  ["GET /api/state","state"],["GET /api/runtime-status","status"],["GET /api/operations","operations"],
+  ["GET /api/inject-targets","inject-targets"],["GET /api/model-profile-state","model-profile"],
+  ["POST /api/execute","execute"],["POST /api/operation-ack","operation-ack"],
+  ["GET /wails/runtime.js","wails-runtime"],["GET /wails/runtime","wails-transport"],
+  ["POST /wails/runtime","wails-transport"],["HEAD /wails/custom.js","wails-optional"],
+  ["GET /workspace.html","workspace"],["GET /quickpanel.html","quickpanel"],["POST /api/panel-size","panel-size"],
+]);
+export function requestID(method,path){
+  const type=["GET","POST","HEAD"].includes(method)?method:"OTHER";
+  return type+":"+(requestIDs.get(type+" "+path)??"other");
+}
 export function quickPanelAdapter(assets,{locale,failStatus=false,surface="quickpanel",wails}){
   assert(["en","zh"].includes(locale));
   const workspace=surface==="quickpanel"?null:workspaceMock(surface);
@@ -75,8 +87,11 @@ export function quickPanelAdapter(assets,{locale,failStatus=false,surface="quick
   const observed={state:0,status:0,resize:0,denied:0};
   const response=(res,statusCode,body)=>res.writeHead(statusCode,{"Content-Type":"application/json"}).end(JSON.stringify(body));
   const ok=(res,result)=>response(res,200,{ok:true,result});
-  const deny=(res,statusCode)=>{
+  const deniedRequests=[];
+  const deny=(req,res,statusCode)=>{
     observed.denied++;
+    if(deniedRequests.length<8)
+      deniedRequests.push(requestID(req.method,req.url)+":"+statusCode);
     return response(res,statusCode,{ok:false,error:"Unexpected compiled WebUI request"});
   };
   const app=http.createServer({requestTimeout:5000,headersTimeout:5000},async(req,res)=>{
@@ -88,9 +103,9 @@ export function quickPanelAdapter(assets,{locale,failStatus=false,surface="quick
       const origin="http://"+host;
       if(req.headers.host!==host||(req.headers.origin&&req.headers.origin!==origin)||
           typeof req.url!=="string"||!req.url.startsWith("/")||req.url.startsWith("//"))
-        return deny(res,403);
+        return deny(req,res,403);
       const url=new URL(req.url,origin);
-      if(url.search||url.pathname!==req.url)return deny(res,400);
+      if(url.search||url.pathname!==req.url)return deny(req,res,400);
       if(req.method==="GET"&&url.pathname==="/api/state"){
         observed.state++;
         return ok(res,{connected:true,platform:"linux",version:"fixture",preferences:{language:locale,onboardingCompleted:true},
@@ -112,38 +127,39 @@ export function quickPanelAdapter(assets,{locale,failStatus=false,surface="quick
         if(req.method==="GET"&&url.pathname==="/api/operations")return ok(res,[]);
         if(req.method==="GET"&&url.pathname==="/api/inject-targets"&&surface==="overview")return ok(res,{targets:[]});
         if(req.method==="GET"&&url.pathname==="/api/model-profile-state"&&surface==="overview")return ok(res,workspace.modelProfile);
-        if(req.method==="POST"&&url.pathname==="/api/execute"){
+        if(req.method==="POST"&&["/api/execute","/api/operation-ack"].includes(url.pathname)){
           if(req.headers.origin!==origin||req.headers["x-respire-client"]!=="1"||
-              req.headers["content-type"]!=="application/json")return deny(res,403);
+              req.headers["content-type"]!=="application/json")return deny(req,res,403);
+          const acknowledge=url.pathname==="/api/operation-ack";
           let body="";
           for await(const chunk of req){
             body+=chunk;
-            if(body.length>1024)return deny(res,400);
+            if(body.length>(acknowledge?96:1024))return deny(req,res,400);
           }
-          return ok(res,workspace.execute(JSON.parse(body)));
+          return ok(res,(acknowledge?workspace.acknowledge:workspace.execute)(JSON.parse(body)));
         }
       }
       if(!workspace&&req.method==="POST"&&url.pathname==="/api/panel-size"){
         if(req.headers.origin!==origin||req.headers["x-respire-client"]!=="1"||
-            req.headers["content-type"]!=="application/json")return deny(res,403);
+            req.headers["content-type"]!=="application/json")return deny(req,res,403);
         let body="";
         for await(const chunk of req){
           body+=chunk;
-          if(body.length>64)return deny(res,400);
+          if(body.length>64)return deny(req,res,400);
         }
         const size=JSON.parse(body);
         if(!size||Object.keys(size).join(",")!=="height"||!Number.isInteger(size.height)||
-            size.height<1||size.height>2048)return deny(res,400);
+            size.height<1||size.height>2048)return deny(req,res,400);
         observed.resize++;
         return ok(res,{});
       }
       const name=url.pathname.slice(1),type=mime.get(extname(name));
       if(req.method==="GET"&&safe(name)&&type&&assets.has(name)&&(extname(name)!==".html"||name===(workspace?"workspace.html":"quickpanel.html")))
         return res.writeHead(200,{"Content-Type":type}).end(assets.get(name));
-      return deny(res,404);
+      return deny(req,res,404);
     }catch{
-      if(!res.headersSent)deny(res,400);
+      if(!res.headersSent)deny(req,res,400);
     }
   });
-  return {app,observed,count:status.memory_count,operations:workspace?.operations};
+  return {app,observed,count:status.memory_count,operations:workspace?.operations,receipts:workspace?.receipts,deniedRequests};
 }

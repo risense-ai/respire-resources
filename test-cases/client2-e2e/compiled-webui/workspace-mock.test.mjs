@@ -5,7 +5,9 @@ import {quickPanelAdapter} from "./quick-panel-adapter.mjs";
 import {marker,needle,verifyWailsRuntime,workspaceMock} from "./workspace-mock.mjs";
 
 const id="desktop-00000000-0000-0000-0000-000000000000";
-const exec=(domain,name,args)=>domain.execute({name,args,id,confirmed:true,secret:""});
+let sequence=0;
+const nextID=()=>id.slice(0,-8)+String(++sequence).padStart(8,"0");
+const exec=(domain,name,args,operation=nextID())=>domain.execute({name,args,id:operation,confirmed:true,secret:""});
 
 test("positive list and Recall use the deterministic typed fixture and reject scope drift",()=>{
   const workspace=workspaceMock("workspace");
@@ -47,4 +49,31 @@ test("Wails pin rejects absent path and tests real bytes when provisioned",async
   assert.equal((await fetch(origin+"/wails/custom.js",{method:"HEAD"})).status,404);
   assert.equal((await fetch(origin+"/wails/runtime",{method:"POST"})).status,404);
   assert.equal(observed.denied,1);
+});
+
+
+test("acks consume only known terminal read IDs, once, without weakening route guarantees",async t=>{
+  const {app,receipts,deniedRequests}=quickPanelAdapter(new Map(),{locale:"en",surface:"overview",wails:Buffer.alloc(0)});
+  await once(app.listen(0,"127.0.0.1"),"listening");
+  t.after(()=>new Promise(resolve=>app.close(resolve)));
+  const origin="http://127.0.0.1:"+app.address().port;
+  const post=(path,body,source=origin)=>fetch(origin+path,{
+    method:"POST",headers:{Origin:source,"X-Respire-Client":"1","Content-Type":"application/json"},
+    body:JSON.stringify(body),
+  });
+  assert.equal((await post("/api/operation-ack",{id})).status,400);
+  const operation={id,name:"query_log",args:{stats:true,limit:1},confirmed:true,secret:""};
+  const launched=await post("/api/execute",operation);
+  assert.equal(launched.status,200);
+  assert.equal((await launched.json()).result.id,id);
+  assert.deepEqual(receipts(),{issued:1,acknowledged:0,pending:1});
+  assert.equal((await post("/api/operation-ack",{id},"https://example.invalid")).status,403);
+  assert.equal((await post("/api/operation-ack",{id,unexpected:true})).status,400);
+  assert.equal((await post("/api/operation-ack",{id})).status,200);
+  assert.deepEqual(receipts(),{issued:1,acknowledged:1,pending:0});
+  assert.equal((await post("/api/operation-ack",{id})).status,400);
+  assert.equal((await post("/api/execute",operation)).status,400);
+  assert.equal((await post("/api/reserved-private-marker?private=value",{})).status,400);
+  assert.deepEqual(deniedRequests,["POST:operation-ack:400","POST:operation-ack:403",
+    "POST:operation-ack:400","POST:operation-ack:400","POST:execute:400","POST:other:400"]);
 });
