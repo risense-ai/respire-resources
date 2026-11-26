@@ -1,0 +1,54 @@
+name: Offline native CLI and PTY qualification
+on:
+  pull_request:
+    types: [opened]
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  qualify:
+    if: github.repository == 'risense-ai/respire-resources' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'verify/card-018-native-cli-pty' && github.event.pull_request.draft == true && github.run_attempt == 1
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: risense-ai/respire
+          ref: a3b9b4a5738be2f071d59d06ac975ff1672677bf
+          path: exact-product
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12.10"
+      - name: Prepare the exact native CLI binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = deed9c2b8ea132e010d7681f7876be35956e4709
+          test "$(git diff --name-only HEAD^ HEAD)" = .github/workflows/verify-native-cli-pty-offline.yml
+          test "$(git -C exact-product rev-parse HEAD)" = a3b9b4a5738be2f071d59d06ac975ff1672677bf
+          echo '843e29f24a7c4e86703fef3e52c7f8b63c8444063feb2baae7bd933939eb293f  test-cases/cli-e2e/verify-inject-tui-linux.py' | sha256sum -c
+          rustup toolchain install 1.95.0 --profile minimal
+          cargo +1.95.0 build --locked --manifest-path exact-product/apps/cli/Cargo.toml --target-dir "$RUNNER_TEMP/cli-target" -p respire --bin rsrs
+      - name: Exercise synthetic native CLI and PTY in an isolated loopback namespace
+        shell: bash
+        run: |
+          set -euo pipefail
+          bin="$(realpath "$RUNNER_TEMP/cli-target/debug/rsrs")"
+          sha="$(sha256sum "$bin" | cut -d" " -f1)"
+          result="$RUNNER_TEMP/cli-pty-receipt.json"
+          timeout 120s python3 -I test-cases/cli-e2e/verify-inject-tui-linux.py --cli "$bin" --sha256 "$sha" | tee "$result"
+          python3 -I - "$result" "$sha" <<'PY'
+          import json, re, sys
+          with open(sys.argv[1], encoding="utf-8") as stream:
+              result = json.load(stream)
+          assert result["cli_sha256"] == sys.argv[2]
+          assert all(re.fullmatch(r"[0-9a-f]{64}", result[key]) for key in ("injected_sha256", "removed_sha256"))
+          assert isinstance(result["remove_byte_exact"], bool)
+          print("PASS exact native Claude CLI and interactive fixture")
+          PY
