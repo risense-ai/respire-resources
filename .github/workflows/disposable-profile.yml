@@ -1,0 +1,70 @@
+name: Disposable CARD-018 native profile qualification
+on:
+  pull_request:
+    branches: [main]
+    types: [labeled]
+permissions:
+  contents: read
+jobs:
+  build:
+    if: github.event.pull_request.draft && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'verify/card018-profile-admission' && github.event.label.name == 'card018-native-junction-proof' && github.run_attempt == 1
+    runs-on: windows-2025
+    timeout-minutes: 20
+    outputs:
+      manifest: ${{ steps.build.outputs.manifest }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: risense-ai/respire
+          ref: 3a4e001b966630161af71f712731ac1572e02328
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: apps/client2/go.mod
+          cache: false
+      - id: build
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $PSNativeCommandUseErrorActionPreference=$true
+          $sha=(git rev-parse HEAD)
+          if ($sha -cne '3a4e001b966630161af71f712731ac1572e02328') {throw 'Wrong product commit'}
+          $stage=Join-Path $env:RUNNER_TEMP 'profile-test-build'
+          [void](New-Item -ItemType Directory -Path $stage)
+          Push-Location packages/runtime-sdk-go
+          try { go generate ./... } finally { Pop-Location }
+          Push-Location apps/client2
+          try { go test -mod=readonly -c -o (Join-Path $stage 'host.test.exe') ./internal/host } finally { Pop-Location }
+          $manifest=Join-Path $stage 'manifest.json'
+          @{product=$sha;run=$env:GITHUB_RUN_ID;exe=(Get-FileHash (Join-Path $stage 'host.test.exe')).Hash.ToLowerInvariant()} | ConvertTo-Json -Compress | Set-Content -Encoding utf8NoBOM $manifest
+          ('manifest='+(Get-FileHash $manifest).Hash.ToLowerInvariant()) >> $env:GITHUB_OUTPUT
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: exact-profile-tests
+          path: ${{ runner.temp }}/profile-test-build
+          retention-days: 1
+          if-no-files-found: error
+  qualify:
+    needs: build
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: risense-ai/respire-resources
+          ref: 1c060bcd958b5801f3c41a8542f98647d2a4b23e
+          path: controls
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: exact-profile-tests
+          path: staged
+      - name: Verify and run offline under the owned Windows job
+        shell: pwsh
+        env:
+          MANIFEST_SHA: ${{ needs.build.outputs.manifest }}
+        run: ./test-cases/disposable-profile/qualify.ps1
