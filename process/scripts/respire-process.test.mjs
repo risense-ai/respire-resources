@@ -300,3 +300,39 @@ test("lessons-audit counts independent fixes and reverts and reports missing led
   assert.deepEqual(report.guardrails, [{ lesson: "L-001", commits: report.candidates.map((item) => item.sha) }]);
   assert.deepEqual(audit(), report);
 });
+
+test("nightly report combines snapshots and keeps one stable draft per lesson across reruns", (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "lessons-nightly-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const repos = ["resources", "product"].map((name) => path.join(dir, name));
+  const git = (cwd, ...args) => execFileSync("git", ["-c", "user.name=Fixture", "-c",
+    "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false", ...args], { cwd, stdio: "pipe" });
+  for (const repo of repos) {
+    fs.mkdirSync(repo);
+    git(repo, "init", "-q");
+    git(repo, "commit", "--allow-empty", "-qm", "initial");
+  }
+  const fix = (repo, title) => git(repo, "commit", "--allow-empty", "-qm", "fix: " + title, "-m", "Lesson: L-001");
+  const report = () => execFileSync(process.execPath, [path.join(ROOT, "process/scripts/nightly-lessons.mjs"),
+    ...repos], { cwd: dir, encoding: "utf8" });
+  fix(repos[0], "first");
+  // The same commit object exists in both first-parent histories.
+  const shared = git(repos[0], "rev-parse", "HEAD").toString().trim();
+  git(repos[1], "fetch", repos[0], "HEAD");
+  git(repos[1], "checkout", "--detach", shared);
+  fix(repos[1], "second");
+  assert.deepEqual(JSON.parse(report()).drafts, []);
+  fix(repos[1], "third");
+  const bytes = report();
+  assert.equal(report(), bytes);
+  const { snapshots, drafts } = JSON.parse(bytes);
+  assert.equal(snapshots.length, 2);
+  assert.equal(drafts.length, 1);
+  assert.equal(drafts[0].key, "respire-guardrail/L-001");
+  assert.equal(new Set(drafts[0].evidence.map(({ sha }) => sha)).size, 3);
+  assert.deepEqual(drafts[0].evidence.find(({ sha }) => sha === shared),
+    { sha: shared, repositories: ["respire-resources", "respire"] });
+  fix(repos[1], "fourth");
+  assert.deepEqual(JSON.parse(report()).drafts.map(({ key, evidence }) => [key, evidence.length]),
+    [[drafts[0].key, 4]]);
+});
