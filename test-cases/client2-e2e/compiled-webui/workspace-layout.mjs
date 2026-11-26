@@ -26,7 +26,7 @@ async function check(browser,surface,locale){
   const {app,observed,count,operations,receipts,deniedRequests}=quickPanelAdapter(assets,{locale,surface,wails});
   const context=await browser.newContext({serviceWorkers:"block",viewport:viewports.desktop,locale,timezoneId:"UTC"});
   const failures=[];
-  let phase="start";
+  let phase="start",checkpoint="boot";
   const record=code=>{if(failures.length<8)failures.push(code);};
   try{
     await once(app.listen(0,"127.0.0.1"),"listening");
@@ -77,7 +77,8 @@ async function check(browser,surface,locale){
       assert.equal(page.url(),origin+"/workspace.html#settings");
     }
     const storage=view.locator('section:has(input[name="dir"])');
-    const title=surface==="storage"?storage.locator("h2"):view.locator("h1");
+    const title=surface==="storage"?storage.locator("h2"):
+      view.locator(surface==="settings"?".page-heading h1":"h1");
     const item=view.locator(".memory-title[data-select]").filter({hasText:marker});
     if(surface==="recall"){
       await item.waitFor({state:"visible",timeout:5000});
@@ -89,11 +90,19 @@ async function check(browser,surface,locale){
     for(const size of [viewports.desktop,viewports.desktopSmall]){
       phase=size.width===1440?"desktop":"desktop-small";
       await page.setViewportSize(size);
+      checkpoint="language";
       assert.equal(await page.locator("html").getAttribute("lang"),locale==="zh"?"zh-CN":"en");
+      checkpoint="caption";
       const caption=surface==="recall"?view.locator("button[data-clear-search]"):title;
+      if(surface==="settings"){
+        await page.waitForFunction(({text})=>
+          document.querySelector("#view .view-page .page-heading h1")?.textContent.trim()===text,
+          {text:captions[surface][locale]},{timeout:5000});
+      }
       await caption.waitFor({state:"visible",timeout:5000});
       assert.equal(await caption.count(),1);
       assert.equal((await caption.innerText()).trim(),captions[surface][locale]);
+      checkpoint="loaded-data";
       if(surface==="overview"){
         const metric=view.locator("[data-overview-summary] .metric").first().locator("strong");
         await page.waitForFunction(({text})=>document.querySelector("[data-overview-summary] .metric strong")?.textContent===text,
@@ -136,15 +145,18 @@ async function check(browser,surface,locale){
         assert.equal(await view.locator('select[name="diary"]').inputValue(),agentMode.diary_mode);
         assert(operations.has("agent_config"),"Missing actual Settings configuration load");
       }
+      checkpoint="stock-layout";
       await page.evaluate(()=>document.fonts.ready.then(()=>{}));
       const stock=await page.evaluate(measureLayout);
       assert.deepEqual(stock.issues,[],"Stock layout issues");
       if(fontSize!==undefined)assert(stock.fontSize<fontSize,"Expected fluid root rem scaling");
       fontSize=stock.fontSize;
+      checkpoint="app-errors";
       assert.equal(await view.locator(errorSelector).count(),0,"Application error notice");
       assert.equal(await page.locator("#notice.error:not([hidden])").count(),0);
     }
     phase="terminal";
+    checkpoint="acknowledgement";
     assert(observed.state>=1&&observed.status>=1,"Missing ready-state bridge requests");
     const deadline=Date.now()+1000;
     while((receipts().issued===0||receipts().pending>0)&&Date.now()<deadline)
@@ -158,7 +170,7 @@ async function check(browser,surface,locale){
   }catch(error){
     const counts=Object.fromEntries(Object.entries(observed).map(([key,value])=>[key,Math.min(value,999)]));
     console.error("WORKSPACE FIXTURE DIAGNOSTIC "+JSON.stringify({
-      surface,locale,counts,receipts:receipts(),denied:deniedRequests,events:failures,
+      surface,locale,phase,checkpoint,counts,receipts:receipts(),denied:deniedRequests,events:failures,
     }));
     throw error;
   }finally{
