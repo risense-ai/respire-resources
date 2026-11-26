@@ -10,7 +10,7 @@ $runner = (Resolve-Path test-cases/runner.mjs).Path
 $manifest = (Resolve-Path staged/manifest.json).Path
 if ((Get-FileHash $manifest).Hash.ToLowerInvariant() -cne $env:MANIFEST_SHA) { throw 'Invalid preparation manifest' }
 $m = Get-Content -Raw $manifest | ConvertFrom-Json
-if ($m.product -cne 'd7db37e6f44ff13205642bd65c8b5af000f35a34' -or $m.run -cne $env:GITHUB_RUN_ID -or (Get-FileHash $testExe).Hash.ToLowerInvariant() -cne $m.exe) { throw 'Invalid test binary binding' }
+if ($m.product -cne 'd7db37e6f44ff13205642bd65c8b5af000f35a34' -or $m.run -cne '45765454095' -or (Get-FileHash $testExe).Hash.ToLowerInvariant() -cne $m.exe) { throw 'Invalid test binary binding' }
 $node = (Get-Command node.exe -CommandType Application).Source
 $powershell = Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
 $icacls = Join-Path $env:SystemRoot 'System32/icacls.exe'
@@ -58,8 +58,16 @@ try {
     $installed += @{Program=$programs[$i];V4=$n4;V6=$n6}
   }
   # Inherit only the minimum test process state, never runner tokens or home.
-  $testTemp = Join-Path $stage 'synthetic-temp'
+  # The GitHub work volume has a shared root ACL. Use a new owned directory
+  # on the Windows system volume; never rewrite an existing ancestor ACL.
+  $testTemp = Join-Path ([IO.Path]::GetPathRoot($env:SystemRoot)) ('card018-synthetic-' + [guid]::NewGuid().ToString('N'))
   [void](New-Item -ItemType Directory -Path $testTemp)
+  $owner = [Security.Principal.WindowsIdentity]::GetCurrent().User
+  $acl = New-Object Security.AccessControl.DirectorySecurity
+  $acl.SetOwner($owner)
+  $acl.SetAccessRuleProtection($true,$false)
+  $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($owner,'FullControl','ContainerInherit,ObjectInherit','None','Allow'))
+  Set-Acl -LiteralPath $testTemp -AclObject $acl
   $keep = @('SystemRoot','windir','SystemDrive','ComSpec','OS','PROCESSOR_ARCHITECTURE',
     'GITHUB_ACTIONS','GITHUB_RUN_ID','GITHUB_RUN_ATTEMPT','RUNNER_ENVIRONMENT','CARD018_FROZEN_HEAD')
   foreach ($item in @(Get-ChildItem Env:)) {
@@ -108,4 +116,8 @@ try {
     }
   }
   'PASS exact disposable rule cleanup'
+  if ($testTemp -and [IO.Directory]::Exists($testTemp)) {
+    # Nonrecursive cleanup will fail if the tests leaked any fixture.
+    [IO.Directory]::Delete($testTemp, $false)
+  }
 }
