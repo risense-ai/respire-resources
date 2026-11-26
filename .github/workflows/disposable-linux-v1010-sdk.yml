@@ -1,0 +1,374 @@
+name: CARD-018 ordinary Linux SQLite qualification
+'on':
+  pull_request:
+    types: [opened]
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  sqlite:
+    if: >-
+      github.repository == 'risense-ai/respire-resources' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.base.repo.full_name == github.repository &&
+      github.event.pull_request.draft == true &&
+      github.event.pull_request.head.ref == 'verify/card018-linux-v1010-sdk' &&
+      github.event.pull_request.base.ref == 'main' &&
+      github.event.pull_request.base.sha == '8337ca0ef25bbecf563f9f6e0f6662d026067e05' &&
+      github.run_attempt == '1'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - name: Inspect the exact Resources event head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: risense-ai/respire-resources
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 2
+          path: inspection
+          persist-credentials: false
+      - name: Verify single-parent workflow-only addition
+        working-directory: inspection
+        shell: bash
+        env:
+          EVENT_HEAD: ${{ github.event.pull_request.head.sha }}
+          BASE: 8337ca0ef25bbecf563f9f6e0f6662d026067e05
+        run: |
+          set -euo pipefail
+          [[ "$EVENT_HEAD" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$EVENT_HEAD"
+          test "$(git show -s --format=%P HEAD)" = "$BASE"
+          path=.github/workflows/disposable-linux-v1010-sdk.yml
+          git diff-tree --no-commit-id -r --raw --no-abbrev --no-renames -z "$BASE" HEAD > "$RUNNER_TEMP/card018-changes"
+          blob=$(git rev-parse "HEAD:$path")
+          printf ':000000 100644 %040d %s A\0%s\0' 0 "$blob" "$path" | cmp - "$RUNNER_TEMP/card018-changes"
+          git cat-file blob "$blob" | sha256sum
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: risense-ai/respire
+          ref: ca7d3d309581017be32aa0a303740c2a011619c1
+          path: product
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: risense-ai/respire-resources
+          ref: 8337ca0ef25bbecf563f9f6e0f6662d026067e05
+          path: resources
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.14.0'
+      - name: Read pinned historical producer into its own checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: risense-ai/respire-cli
+          ref: 08e57d648248f7d79f9d711bd4315471be2c39c7
+          path: historical-source
+          persist-credentials: false
+      - name: Build locked producers and qualify on isolated loopback
+        shell: bash
+        run: |
+          set -euo pipefail
+          work=$(mktemp -d "$RUNNER_TEMP/card018-v1010-XXXXXXXX")
+          cd "$work"
+          cat > qualify.py <<'END_CARD018_FILE'
+          """Offline, positive-only Golden startup comparison. Run through the companion recipe."""
+          import contextlib
+          import hashlib
+          import http.client
+          import json
+          import os
+          from pathlib import Path
+          import secrets
+          import shutil
+          import socket
+          import sqlite3
+          import subprocess
+          import sys
+          import tempfile
+          import time
+          
+          PRODUCT = "ca7d3d309581017be32aa0a303740c2a011619c1"
+          RESOURCES = "8337ca0ef25bbecf563f9f6e0f6662d026067e05"
+          GOLDEN = "a081b149521d3dd516fdda50bc744249293fb30990e3b98d1ee392189fe02c9d"
+          ROW = "9ff3d60ba6b9ce2649364cc0d87e83ab1bea504b25cb233da1f1df27667ca5c9"
+          
+          
+          def require(ok, message):
+              if not ok:
+                  raise ValueError(message)
+          
+          
+          def digest(path):
+              h = hashlib.sha256()
+              with path.open('rb') as src:
+                  for chunk in iter(lambda: src.read(1048576), b''):
+                      h.update(chunk)
+              return h.hexdigest()
+          
+          
+          def observe(root, columns=None, dbpath=None):
+              dbpath = dbpath or root / "rsrs.db"
+              with contextlib.closing(sqlite3.connect(dbpath.as_uri() + '?mode=ro', uri=True)) as db:
+                  require(db.execute('pragma integrity_check').fetchall() == [('ok',)], 'integrity')
+                  require(not db.execute('pragma foreign_key_check').fetchall(), 'foreign keys')
+                  schema = db.execute('select type,name,tbl_name,sql from sqlite_schema order by type,name').fetchall()
+                  version = db.execute('pragma user_version').fetchone()[0]
+                  if columns is None:
+                      columns = {t: [r[1] for r in db.execute(f'pragma table_info({t})')]
+                                 for t in ('memories', 'sync_outbox')}
+                  rows = {}
+                  for table, order in [('memories', 'id'), ('sync_outbox', 'seq')]:
+                      names = ','.join('"' + n.replace('"', '""') + '"' for n in columns[table])
+                      rows[table] = db.execute(f'select {names} from {table} order by {order}').fetchall()
+                  require(db.execute("select count(*) from sync_outbox where state='pending'").fetchone() == (2,), 'pending count')
+                  require(all(len(r) == 2 for r in rows.values()), 'seeded counts')
+              backups = {str(p.relative_to(root)): digest(p) for p in sorted(root.rglob('*'))
+                         if p.is_file() and ('snapshots' in p.relative_to(root).parts or 'backup' in str(p.relative_to(root)).lower() or '.bak-pre-v' in p.name or p.suffix == '.bak')}
+              return columns, rows, (version, schema), backups
+          
+          
+          def request(port, path, body=None, headers=None):
+              with contextlib.closing(http.client.HTTPConnection('127.0.0.1', port, timeout=12)) as conn:
+                  conn.request('GET' if body is None else 'POST', path,
+                               None if body is None else json.dumps(body),
+                               {'Content-Type': 'application/json', **(headers or {})})
+                  response = conn.getresponse()
+                  require(response.status == 200, f'{path} HTTP {response.status}')
+                  raw = response.read(1048577)
+                  require(len(raw) <= 1048576, 'oversized response')
+                  return json.loads(raw)
+          
+          
+          def cycle(binary, sha, root, env, factor, token):
+              with socket.socket() as probe:
+                  probe.bind(('127.0.0.1', 0))
+                  port = probe.getsockname()[1]
+              endpoint = f'http://127.0.0.1:{port}'
+              proc = subprocess.Popen([binary, 'serve', '--host', '127.0.0.1', '--port', str(port),
+                                       '--data-dir', root], cwd=root, env=env, stdin=subprocess.DEVNULL,
+                                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+              try:
+                  end = time.monotonic() + 90
+                  while time.monotonic() < end:
+                      require(proc.poll() is None, 'Runtime exited during startup')
+                      try:
+                          pub = json.loads((root / 'runtime/endpoint.json').read_bytes())
+                          if pub['pid'] == proc.pid:
+                              for key, value in dict(url=endpoint, data_dir=str(root), image_path=str(binary),
+                                                     image_sha256=sha).items():
+                                  require(pub[key] == value, 'endpoint ' + key)
+                              h = request(port, '/api/health')
+                              for key in ('pid', 'url', 'image_path', 'image_sha256', 'data_dir', 'instance_id'):
+                                  require(h[key] == pub[key], 'health ' + key)
+                              if h['startup_complete'] and h['state'] == 'locked':
+                                  break
+                      except (FileNotFoundError, ConnectionRefusedError):
+                          pass
+                      time.sleep(.1)
+                  else:
+                      raise TimeoutError('locked startup')
+                  unlock = request(port, '/api/runtime/unlock', dict(schema_version=1, profile=str(root),
+                                   session_sha256=digest(root / 'session.json'), instance_id=h['instance_id'],
+                                   generation=h['generation'], super_password=factor, login_password=None),
+                                   {'Authorization': 'Bearer ' + token})
+                  require(unlock['store_ready'] is True, 'unlock')
+                  ready = request(port, '/api/health')
+                  require(ready['state'] == 'ready' and ready['store_ready'] and
+                          all(ready[k] == h[k] for k in ('instance_id','pid','process_start_id','image_sha256','data_dir')), 'ready identity')
+                  scope = {k: ready[k] for k in ('installation_id','instance_id','account_id','generation')}
+                  stop = request(port, '/api/runtime/stop', scope, {'X-Respire-Lifecycle':'coordinator-v1'})
+                  require(stop['ok'] is True and stop['state'] == 'accepted', 'stop acceptance')
+                  require(proc.wait(35) == 0, 'clean exit')
+                  drained = json.loads((root / 'runtime' / ('stop-' + ready['instance_id'] + '.json')).read_bytes())
+                  require(drained['state'] == 'drained' and drained['unfinished'] == [] and
+                          drained['operation_id'] == stop['operation_id'] and
+                          all(drained[k] == ready[k] for k in (*scope, 'pid','image_sha256','process_start_id','runtime_version','image_path')), 'stop receipt')
+                  return dict(pid=proc.pid, instance=ready['instance_id'], start=ready['process_start_id'])
+              finally:
+                  if proc.poll() is None:
+                      proc.kill()
+                      proc.wait(5)
+          
+          
+          def make_session(node, sha, expected_version, root, env):
+              require(node.is_absolute() and node == node.resolve(strict=True), 'canonical Node path required')
+              require(digest(node) == sha, 'Node digest mismatch')
+              version = subprocess.check_output([node, '--version'], env=env, text=True, timeout=10).strip()
+              require(version == expected_version, 'Node version mismatch')
+              return subprocess.check_output([node, Path(__file__).with_name('session.mjs'), root / 'session.json'],
+                                             env=env, text=True, timeout=10)
+          
+          
+          def main():
+              binary, seed, fixtures = map(lambda x: Path(x).resolve(strict=True), sys.argv[1:4])
+              sha, seed_sha, node_path, node_sha, producer_path, producer_sha = sys.argv[4:]
+              producer = Path(producer_path).resolve(strict=True)
+              require(digest(producer) == producer_sha, "legacy producer digest")
+              require(sys.platform == 'linux' and os.uname().machine == 'x86_64', 'Linux x64 required')
+              require({n for _, n in socket.if_nameindex()} == {'lo'}, 'isolated loopback required')
+              require(digest(binary) == sha and digest(seed) == seed_sha, 'build digest mismatch')
+              golden, row = fixtures / 'respire-1x-synthetic.db', fixtures / 'legacy-encrypted-row.json'
+              require(digest(golden) == GOLDEN and digest(row) == ROW, 'fixture digest')
+              os.umask(0o077)
+              with tempfile.TemporaryDirectory(prefix='card018-') as tmp:
+                  root = Path(tmp).resolve() / 'data'
+                  (root / 'runtime').mkdir(parents=True)
+                  env = dict(PATH='/usr/bin:/bin', RSRS_DATA_DIR=str(root), RSRS_BIN_DIR=str(binary.parent),
+                             RSRS_NO_AUTOSYNC='1', XDG_DATA_HOME=str(root))
+                  for key in ('HOME','TMPDIR','XDG_CONFIG_HOME','XDG_CACHE_HOME','XDG_STATE_HOME','RSRS_M3_DIR'):
+                      path = Path(tmp) / key
+                      path.mkdir()
+                      env[key] = str(path)
+                  subprocess.run([producer, root / 'rsrs.db'], cwd=root, env=env, timeout=25, check=True)
+                  with contextlib.closing(sqlite3.connect((root/'rsrs.db').as_uri()+'?mode=ro',uri=True)) as db:
+                      require(db.execute("select count(*) from sqlite_schema where name='memory_metadata_gate_insert'").fetchone() == (0,), 'expected historical schema')
+          
+                  subprocess.run([seed, root / 'rsrs.db', row], env=env, timeout=20, check=True)
+                  factor = make_session(Path(node_path), node_sha, 'v22.14.0', root, env)
+                  token = secrets.token_hex(32)
+                  (root / 'runtime/token').write_text(token)
+                  cols, before, schema, backups = observe(root)
+                  require(schema[0] == 0 and not backups, 'historical marker and clean inventory')
+                  receipts = []
+                  summaries = []
+                  for phase in ('seed', 'first', 'second'):
+                      if phase != 'seed':
+                          receipts.append(cycle(binary, sha, root, env, factor, token))
+                      _, rows, current, inventory = observe(root, cols)
+                      require(rows == before, phase + ' row/outbox mismatch')
+                      if phase == 'first':
+                          found = list(root.glob('rsrs.db.bak-pre-v1-*'))
+                          require(len(found) == 1 and current[0] == 1 and current[1] != schema[1], 'actual schema transition and backup')
+                          _, saved_rows, saved_schema, _ = observe(root, cols, found[0])
+                          require(saved_rows == before and saved_schema == schema, 'backup must contain complete pre-DDL schema and seeded witnesses')
+                          first_inventory = inventory
+                      if phase == 'second':
+                          require(inventory == first_inventory, 'restart changed backup inventory')
+                          require(current == first_schema, 'restart schema drift')
+                      first_schema = current
+                      summaries.append(dict(phase=phase, schema_sha256=hashlib.sha256(json.dumps(current).encode()).hexdigest(),
+                                            user_version=current[0], counts={k:len(v) for k,v in rows.items()},
+                                            witness_sha256=hashlib.sha256(json.dumps(rows,default=lambda b: {'blob':b.hex()}).encode()).hexdigest(),
+                                            backup_inventory=inventory))
+                  require(receipts[0]['instance'] != receipts[1]['instance'], 'distinct startups')
+                  print(json.dumps(dict(product=PRODUCT, resources=RESOURCES, runtime_sha256=sha, seed_sha256=seed_sha,
+                                        node_version='v22.14.0', node_sha256=node_sha, reference_golden_sha256=GOLDEN, legacy_source="08e57d648248f7d79f9d711bd4315471be2c39c7", producer_sha256=producer_sha, fixture_origin="synthetic database created by source-built v1.0.10 storage constructor", sdk_version="1.0.1", starts=receipts, observations=summaries,
+                                        backup_ordering='pre-DDL image compared; publication timing from source only', atomicity='unobserved')))
+          
+          
+          if __name__ == '__main__':
+              main()
+          END_CARD018_FILE
+          echo 'a533a0d8568049d71f424af72e4e69f352a01054f2f2549d3ecd846ae1f182d4  qualify.py' | sha256sum -c -
+          cat > seed.rs <<'END_CARD018_FILE'
+          use anyhow::{ensure, Result};
+          use respire_storage::transport::local::register_witness_functions;
+          use rusqlite::{params, Connection, OpenFlags};
+          use serde_json::Value;
+          
+          fn main() -> Result<()> {
+              let args: Vec<_> = std::env::args_os().collect();
+              ensure!(args.len() == 3);
+              let row: Value = serde_json::from_slice(&std::fs::read(&args[2])?)?;
+              let field = |key: &str| row[key].as_str().expect("pinned fixture field");
+              let mut db = Connection::open_with_flags(&args[1], OpenFlags::SQLITE_OPEN_READ_WRITE)?;
+              register_witness_functions(&db)?;
+              let tx = db.transaction()?;
+              for id in [field("id"), "00000000-0000-4000-8000-000000000002"] {
+                  ensure!(tx.execute("INSERT INTO memories(id,user,ciphertext,nonce,embedding_enc,created_at,updated_at,dirty,deleted) VALUES(?1,?2,?3,?4,?5,?6,?6,1,0)", params![id,field("user"),field("ciphertext"),field("nonce"),field("embedding_enc"),field("updated_at")])? == 1);
+              }
+              tx.commit()?;
+              Ok(())
+          }
+          END_CARD018_FILE
+          echo '7c8eb38604ae5700a0877e7e1404e897600bf3a0e81ea9042f31a0fb32bcde49  seed.rs' | sha256sum -c -
+          cat > session.mjs <<'END_CARD018_FILE'
+          // Match the reviewed release smoke's v4 format and the Golden row's synthetic URK.
+          import {randomBytes, hkdfSync, createCipheriv} from 'node:crypto';
+          import {writeFileSync} from 'node:fs';
+          const entropy = randomBytes(18), nonce = randomBytes(12), salt = randomBytes(16);
+          const key = hkdfSync('sha256', entropy, salt, 'onememory:kek:v4', 32);
+          const cipher = createCipheriv('aes-256-gcm', key, nonce);
+          const wrapped = Buffer.concat([cipher.update(Buffer.alloc(32, 42)), cipher.final(), cipher.getAuthTag()]);
+          writeFileSync(process.argv[2], JSON.stringify({user:'fixture', addr:'https://fixture.invalid', vault_version:4,
+            kdf_salt:salt.toString('hex'), urk_nonce:nonce.toString('hex'), wrapped_urk:wrapped.toString('hex')}), {flag:'wx',mode:0o600});
+          process.stdout.write('A3-' + entropy.toString('hex'));
+          END_CARD018_FILE
+          echo '9cc379477cde4ab940940c2dc032c4366d0faa86bcb81a1ea895d1bac27b873f  session.mjs' | sha256sum -c -
+          cat > legacy_init.rs <<'END_CARD018_FILE'
+          // Build only in a disposable source export of respire-cli v1.0.10.
+          use anyhow::{ensure, Result};
+          use respire_storage::transport::local::LocalStore;
+          use std::path::PathBuf;
+          fn main() -> Result<()> {
+              let path = PathBuf::from(std::env::args_os().nth(1).expect("fresh synthetic database path"));
+              ensure!(!path.exists());
+              drop(LocalStore::open(&path)?);
+              Ok(())
+          }
+          END_CARD018_FILE
+          echo '3e1b0543879a06b2d7f5e12c494f83b435bf334a12e2eb08ac866824c035f7f0  legacy_init.rs' | sha256sum -c -
+          cat > recipe.sh <<'END_CARD018_FILE'
+          #!/usr/bin/env bash
+          # Inert review candidate. On a disposable ubuntu-22.04 X64 runner:
+          # bash recipe.sh /path/to/product-git /path/to/resources-git
+          set -euo pipefail
+          product=ca7d3d309581017be32aa0a303740c2a011619c1
+          resources=8337ca0ef25bbecf563f9f6e0f6662d026067e05
+          driver=$(cd "$(dirname "$0")" && pwd)
+          node_bin=$(realpath -e -- "$(type -P node)")
+          test -x "$node_bin"
+          test "$("$node_bin" --version)" = v22.14.0
+          node_sha=$(sha256sum "$node_bin" | cut -d' ' -f1)
+          base=$(mktemp -d "${RUNNER_TEMP:?}/card018-build-XXXXXXXX")
+          mkdir "$base/product" "$base/resources"
+          git -C "$1" archive "$product" | tar -x -C "$base/product"
+          git -C "$2" archive "$resources" test-cases/fixtures/db | tar -x -C "$base/resources"
+          cd "$base/product"
+          target=x86_64-unknown-linux-gnu
+          test "$(uname -m)" = x86_64
+          rustup toolchain install 1.95.0 --profile minimal
+          test "$(rustc +1.95.0 -vV | sed -n 's/^host: //p')" = "$target"
+          export ORT_LIB_PATH="$base/ort"
+          bash apps/runtime/scripts/prepare-gnu-ort.sh "$target" "$ORT_LIB_PATH"
+          export ORT_SKIP_DOWNLOAD=1 ORT_PREFER_DYNAMIC_LINK=1
+          export RUSTFLAGS="-C target-feature=-crt-static -C embed-bitcode=no -C link-arg=-Wl,-rpath,$ORT_LIB_PATH"
+          common=(--locked --manifest-path apps/runtime/Cargo.toml --target "$target" --target-dir "$base/target")
+          cargo +1.95.0 build "${common[@]}" -p respire_runtime --bin rsrs-runtime
+          bin="$base/target/$target/debug/rsrs-runtime"
+          ldd "$bin" > "$base/linkage"
+          grep -F -- "$ORT_LIB_PATH/libonnxruntime.so.1" "$base/linkage"
+          if grep -F 'not found' "$base/linkage"; then exit 1; fi
+          # Add a seed-only example to the disposable source export after building Runtime.
+          mkdir -p apps/runtime/crates/storage/examples
+          cp "$driver/seed.rs" apps/runtime/crates/storage/examples/card018_seed.rs
+          cargo +1.95.0 build "${common[@]}" -p respire_storage --example card018_seed
+          seed="$base/target/$target/debug/examples/card018_seed"
+          runtime_sha=$(sha256sum "$bin" | cut -d' ' -f1)
+          seed_sha=$(sha256sum "$seed" | cut -d' ' -f1)
+          historical=08e57d648248f7d79f9d711bd4315471be2c39c7
+          test "$(git -C "$3" rev-parse HEAD)" = "$historical"
+          mkdir "$base/historical"
+          git -C "$3" archive "$historical" | tar -x -C "$base/historical"
+          (
+            cd "$base/historical"
+            echo 'a68fac9563615ba1b4a882b36b6b3890c34d4c414789382ac878e2b43d509b8e  Cargo.lock' | sha256sum -c -
+            export RESPIRE_CORE_SDK_DIR="$base/historical-core-sdk"
+            env -u GITHUB_ENV "$node_bin" crates/core-sdk/prepare-sdk.mjs "$target" "$RESPIRE_CORE_SDK_DIR"
+            echo "db971378f3d8c86d69bf663db59d0ccac5cf3b002b321427f728b89f8756ddee  $RESPIRE_CORE_SDK_DIR/manifest.json" | sha256sum -c -
+            mkdir -p crates/storage/examples
+            cp "$driver/legacy_init.rs" crates/storage/examples/card018_legacy_init.rs
+            cargo +1.95.0 build --locked --target "$target" --target-dir "$base/old-target" -p respire_storage --example card018_legacy_init
+          )
+          producer="$base/old-target/$target/debug/examples/card018_legacy_init"
+          producer_sha=$(sha256sum "$producer" | cut -d' ' -f1)
+          # Dedicated namespace has only loopback; drop privileges before qualification.
+          sudo unshare --net -- bash -ceu '
+            ip link set lo up
+            exec setpriv --reuid="$1" --regid="$2" --clear-groups --no-new-privs env -i PATH=/usr/bin:/bin \
+              timeout --kill-after=8s 360s /usr/bin/python3 "$3/qualify.py" "$4" "$5" "$6" "$7" "$8" "$9" "${10}" "${11}" "${12}"
+          ' recipe "$(id -u)" "$(id -g)" "$driver" "$bin" "$seed" "$base/resources/test-cases/fixtures/db" "$runtime_sha" "$seed_sha" "$node_bin" "$node_sha" "$producer" "$producer_sha"
+          END_CARD018_FILE
+          echo '727668904768dcb1e719234e1f8e1b1b52a4323706adaafda056e1206abecc23  recipe.sh' | sha256sum -c -
+          bash recipe.sh "$GITHUB_WORKSPACE/product" "$GITHUB_WORKSPACE/resources" "$GITHUB_WORKSPACE/historical-source"
