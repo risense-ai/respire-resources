@@ -1,0 +1,42 @@
+name: CARD-018 offline native junction
+on:
+  pull_request:
+    branches: [main]
+    types: [labeled]
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: card018-junction-offline
+  cancel-in-progress: false
+jobs:
+  qualify:
+    if: >-
+      github.repository == 'risense-ai/respire-resources' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'verify/card-018-native-junction' &&
+      github.event.pull_request.draft == true &&
+      github.event.label.name == 'card018-native-junction-proof' &&
+      github.event.pull_request.base.sha == 'b47b00d22d35c650fb80ac62b6bc10019a0988a2' &&
+      github.run_attempt == 1
+    runs-on: windows-2025
+    timeout-minutes: 30
+    env:
+      CARD018_FROZEN_HEAD: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: "${{ github.event.pull_request.head.sha }}"
+          persist-credentials: false
+      - name: Stage the exact one-day artifact using GitHub-internal transfer
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          artifact-ids: 15080179419
+          merge-multiple: true
+          path: ${{ runner.temp }}/card018-kit-transfer
+          github-token: ${{ github.token }}
+          repository: risense-ai/respire-resources
+          run-id: 45739629656
+      - name: Verify kit, confirm effective block rules, run only synthetic loopback cases
+        shell: pwsh
+        run: ./test-cases/plugin-rpc/disposable/qualify.ps1
