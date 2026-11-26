@@ -9,7 +9,7 @@ import {fileURLToPath} from "node:url";
 import {encodeProofFrame,proofLines} from "./positive-memory-proof-ipc.mjs";
 import {serveDiaryAccountsProof} from "./diary-accounts-proof-ipc.mjs";
 
-const source="505ecc4d3a4f6c67c6a35751ed3c467a337027e9";
+const source="4da41a593ea1663a8199b4b9a1475eb05b8620a8";
 
 // This optional fixture bridge must never be called outside a reviewed,
 // isolated hosted run. The caller is the separately verified Runtime

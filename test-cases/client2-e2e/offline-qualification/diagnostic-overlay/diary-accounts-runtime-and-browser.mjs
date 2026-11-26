@@ -77,7 +77,7 @@ try {
     const kind=process.env.CARD018_DIARY_ACCOUNTS_MODE;
     assert(["diary","accounts"].includes(kind));
     const owner={pid:endpoint.pid,instance_id:scope.instance_id,account_id:scope.account_id,generation:scope.generation,
-      runtimeDigest:digest,desktopDigest,source:"505ecc4d3a4f6c67c6a35751ed3c467a337027e9"};
+      runtimeDigest:digest,desktopDigest,source:"4da41a593ea1663a8199b4b9a1475eb05b8620a8"};
     const locale=process.env.CARD018_LOCALE;
     const localDay=d=>[d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-");
     const now=new Date(),day=localDay(now),start=day.slice(0,8)+"01";

@@ -76,7 +76,7 @@ try {
     stage = "owned Storage/Settings independent state";
     const owner={pid:endpoint.pid,instance_id:scope.instance_id,account_id:scope.account_id,
       generation:scope.generation,runtimeDigest:digest,desktopDigest,
-      source:"505ecc4d3a4f6c67c6a35751ed3c467a337027e9"};
+      source:"4da41a593ea1663a8199b4b9a1475eb05b8620a8"};
     const locale=process.env.CARD018_LOCALE;
     const now=new Date();
     const day=[now.getFullYear(),String(now.getMonth()+1).padStart(2,"0"),String(now.getDate()).padStart(2,"0")].join("-");

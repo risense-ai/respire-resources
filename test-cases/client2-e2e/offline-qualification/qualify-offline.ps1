@@ -1,10 +1,10 @@
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
 $fixtureSha = '1dc3b179f484c95a787f82ae5299fd562bc47f6a'
-$product = '505ecc4d3a4f6c67c6a35751ed3c467a337027e9'
-$buildRun = '45665923177'
-$bundleSHA = 'c73ed75cc2acdb813129208d831f13e97726d2d358100d69890d04ed2e7a94d4'
-$manifestSHA = '8fe14544264d1e612824edfada583b86b86d54c0ffd6b7399e7ba3404351f696'
+$product = '4da41a593ea1663a8199b4b9a1475eb05b8620a8'
+$buildRun = '45739629656'
+$bundleSHA = '44357fd5949f7214d1a5c36a0f44744d76d03858ebca6f0f3fb6d59d87712cc7'
+$manifestSHA = '716a37284faee842b87ac369cf238710a05188bf4b0ccedc1309ee2814644e0c'
 $browserSHA = '153106834fb06976c587c39aaef0e8c0d1b1339a575e8d7b87f187058663a094'
 $head = $env:CARD018_FROZEN_HEAD
 if ($env:GITHUB_ACTIONS -cne 'true' -or $env:RUNNER_ENVIRONMENT -cne 'github-hosted' -or
@@ -17,7 +17,7 @@ $fixtures = Join-Path $checkout 'test-cases/client2-e2e'
 if ((git rev-parse HEAD) -cne $head -or (git -C $checkout rev-parse HEAD) -cne $fixtureSha) { throw 'Wrong exact test source' }
 # Only these diagnostics are overlaid after proving the exact fixture checkout.
 $overlay = Join-Path $PSScriptRoot 'diagnostic-overlay'
-$overlays = @('positive-memory-runtime-and-browser.mjs','positive-memory-proof-launcher.mjs','positive-memory-proof-browser.mjs','storage-settings-runtime-and-browser.mjs','storage-settings-proof-launcher.mjs','storage-settings-proof-browser.mjs','diary-accounts-runtime-and-browser.mjs','diary-accounts-proof-launcher.mjs','diary-accounts-proof-browser.mjs','card018-safe-diagnostic.mjs','owned-wails-operation.mjs','compiled-storage-settings-observer.mjs','compiled-diary-accounts-observer.mjs','compiled-product-hosted-observer.mjs','compiled-product-layout-proof.mjs','positive-memory-wails-observer.mjs','required-ui-phases.mjs')
+$overlays = @('positive-memory-runtime-and-browser.mjs','positive-memory-proof-launcher.mjs','positive-memory-proof-browser.mjs','storage-settings-runtime-and-browser.mjs','storage-settings-proof-launcher.mjs','storage-settings-proof-browser.mjs','diary-accounts-runtime-and-browser.mjs','diary-accounts-proof-launcher.mjs','diary-accounts-proof-browser.mjs','card018-safe-diagnostic.mjs','owned-wails-operation.mjs','compiled-storage-settings-observer.mjs','compiled-diary-accounts-observer.mjs','compiled-product-hosted-observer.mjs','compiled-product-layout-proof.mjs','positive-memory-wails-observer.mjs','required-ui-phases.mjs','compiled-ui-run-pins.mjs')
 foreach ($file in $overlays) {
   $source = Join-Path $overlay $file
   $dest = Join-Path $fixtures $file
@@ -119,9 +119,12 @@ try {
   $env:PATH = Join-Path $env:SystemRoot 'System32'
   'PASS bundle verified and rules installed before launching the owned tree'
   $jobs=@(
+    @{name='Overview'; flag='CARD018_POSITIVE_ONLY'; lane='overview-only'; locales=@('en','zh'); script='positive-memory-runtime-and-browser.mjs'; expect='PASS positive Overview with independent scoped Runtime observations'},
+    @{name='Memories'; flag='CARD018_POSITIVE_ONLY'; lane='memories-only'; locales=@('en','zh'); script='positive-memory-runtime-and-browser.mjs'; expect='PASS positive Memories with independent scoped Runtime observations'},
     @{name='Recall'; flag='CARD018_POSITIVE_ONLY'; lane='recall-only'; locales=@('en','zh'); script='positive-memory-runtime-and-browser.mjs'; expect='PASS positive Recall with independent scoped Runtime observations'},
-    @{name='Memories'; flag='CARD018_POSITIVE_ONLY'; lane='memories-only'; locales=@('en'); script='positive-memory-runtime-and-browser.mjs'; expect='PASS positive Memories with independent scoped Runtime observations'},
-    @{name='Diary'; flag='CARD018_DIARY_ACCOUNTS_ONLY'; mode='diary'; locales=@('zh'); script='diary-accounts-runtime-and-browser.mjs'; expect='PASS isolated Diary/Accounts with independent scoped Runtime and host observations'}
+    @{name='Storage-Settings'; flag='CARD018_STORAGE_SETTINGS_ONLY'; locales=@('en','zh'); script='storage-settings-runtime-and-browser.mjs'; expect='PASS isolated Storage and Settings with independent scoped Runtime and host observations'},
+    @{name='Diary'; flag='CARD018_DIARY_ACCOUNTS_ONLY'; mode='diary'; locales=@('en','zh'); script='diary-accounts-runtime-and-browser.mjs'; expect='PASS isolated Diary/Accounts with independent scoped Runtime and host observations'},
+    @{name='Accounts'; flag='CARD018_DIARY_ACCOUNTS_ONLY'; mode='accounts'; locales=@('en','zh'); script='diary-accounts-runtime-and-browser.mjs'; expect='PASS isolated Diary/Accounts with independent scoped Runtime and host observations'}
   )
   foreach ($j in $jobs) {
     foreach ($locale in $j.locales) {
