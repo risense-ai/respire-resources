@@ -3,7 +3,7 @@ import {once} from "node:events";
 import {readFile} from "node:fs/promises";
 import {createRequire} from "node:module";
 import {isAbsolute} from "node:path";
-import {createRequestDiagnostics} from "./request-diagnostics.mjs";
+import {createRequestDiagnostics,optionalWailsStartupAbort} from "./request-diagnostics.mjs";
 import {measureLayout,viewports} from "../layout.mjs";
 import {quickPanelAdapter,requestID,verifyWebUIBundle} from "./quick-panel-adapter.mjs";
 import {accountName,agentMode,dataDir,diaryDay,diaryTitle,localUser,mainSpace,marker,needle,settingsTheme,verifyWailsRuntime} from "./workspace-mock.mjs";
@@ -50,7 +50,14 @@ async function check(browser,surface,locale){
       if(message.location().url===optional&&/failed to load resource/i.test(message.text()))return;
       record("console-error");
     });
-    page.on("requestfailed",request=>record("request-failed:"+phase+":"+classifyFailedRequest(request)));
+    let optionalStartupAbort=false;
+    page.on("requestfailed",request=>{
+      if(optionalWailsStartupAbort(request,origin,phase,optionalStartupAbort)){
+        optionalStartupAbort=true;
+        return;
+      }
+      record("request-failed:"+phase+":"+classifyFailedRequest(request));
+    });
     page.on("response",response=>{
       if(response.status()>=400&&!(response.status()===404&&response.url()===optional&&
         response.request().method()==="HEAD"))record(requestID(response.request().method(),new URL(response.url()).pathname)+":"+response.status());

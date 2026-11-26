@@ -30,3 +30,12 @@ export function createRequestDiagnostics(origin,assets){
     return id+":"+resource+":"+(failureCodes.get(request.failure()?.errorText)??"unclassified");
   };
 }
+
+
+// Exact Wails v3 production runtime optionally probes this uninstalled helper
+// and deliberately tolerates rejection. No other failed request is ignored.
+export function optionalWailsStartupAbort(request,origin,phase,alreadySeen){
+  return !alreadySeen&&phase==="navigation"&&request.method()==="HEAD"&&
+    request.url()===origin+"/wails/custom.js"&&request.resourceType()==="fetch"&&
+    request.failure()?.errorText==="net::ERR_ABORTED";
+}

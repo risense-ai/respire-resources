@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import {test} from "node:test";
-import {createRequestDiagnostics} from "./request-diagnostics.mjs";
+import {createRequestDiagnostics,optionalWailsStartupAbort} from "./request-diagnostics.mjs";
 
 const origin="http://127.0.0.1:4567";
 const marker="never-emit-source-path-user-id";
@@ -22,4 +22,19 @@ test("private resource URLs, unknown paths and arbitrary failure strings never e
   assert.equal(classify(req("https://"+marker+".invalid/dashboard.css",{method:marker,resource:marker,error:marker})),
     "OTHER:other:other:unclassified");
   assert.equal(classify(req(origin+"/"+marker,{error:"NS_BINDING_ABORTED"})),"GET:other:font:binding-aborted");
+});
+
+
+test("only the first exact optional Wails HEAD may abort during startup",()=>{
+  const good=req(origin+"/wails/custom.js",{method:"HEAD",resource:"fetch"});
+  assert(optionalWailsStartupAbort(good,origin,"navigation",false));
+  assert(!optionalWailsStartupAbort(good,origin,"navigation",true));
+  assert(!optionalWailsStartupAbort(good,origin,"readiness",false));
+  for(const request of [
+    req(origin+"/wails/custom.js?ignored=1",{method:"HEAD",resource:"fetch"}),
+    req(origin+"/wails/custom.js",{method:"GET",resource:"fetch"}),
+    req(origin+"/wails/custom.js",{method:"HEAD",resource:"fetch",error:"net::ERR_TIMED_OUT"}),
+    req(origin+"/api/runtime-status",{method:"HEAD",resource:"fetch"}),
+    req("http://127.0.0.1:4568/wails/custom.js",{method:"HEAD",resource:"fetch"}),
+  ])assert(!optionalWailsStartupAbort(request,origin,"navigation",false));
 });
