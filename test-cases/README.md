@@ -516,6 +516,15 @@ the suite reads the compiled output and leaves its translations untouched.
 This mode covers the compiled WebUI against Mock Runtime. Native Wails and
 compiled Runtime integration require separate execution.
 
+The [merged-product Windows qualification](https://github.com/risense-ai/respire-resources/actions/runs/45740798117)
+used product commit `4da41a593ea1663a8199b4b9a1475eb05b8620a8` and passed
+14 native screen-and-locale cases: Overview, Memories, Recall, Storage,
+Settings, Diary, and Accounts in English and Chinese. It used compiled Wails,
+compiled Runtime, and pinned Chromium with synthetic data on IPv4 loopback.
+The job verified its file manifest and firewall rules before launch, required
+independent scoped readback, and verified owned-process and firewall cleanup.
+This native evidence does not replace the separate 32 compiled WebUI layouts.
+
 ## Acceptance inventory
 
 | Requirement | Implemented checks | Outstanding evidence or implementation |

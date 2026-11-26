@@ -1,0 +1,82 @@
+name: CARD-018 compiled WebUI Mock layout on Linux
+on:
+  pull_request:
+    branches: [main]
+    types: [labeled]
+permissions:
+  contents: read
+concurrency:
+  group: card018-compiled-webui-linux
+  cancel-in-progress: false
+jobs:
+  qualify:
+    if: >-
+      github.repository == 'risense-ai/respire-resources' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'verify/card-018-linux-compiled-webui' &&
+      github.event.pull_request.draft == true &&
+      github.event.label.name == 'card018-compiled-client2-proof' &&
+      github.run_attempt == 1
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      PRODUCT_SHA: 20f02cb32d55b3081855651b512bcd9e8a27cf79
+      WAILS_SHA: 7b11001b92b712210b27d8cb53430e83f67ad8e4
+      PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/card018-browser-1194
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: risense-ai/respire
+          ref: 20f02cb32d55b3081855651b512bcd9e8a27cf79
+          path: exact-product
+          persist-credentials: false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: wailsapp/wails
+          ref: 7b11001b92b712210b27d8cb53430e83f67ad8e4
+          path: exact-wails
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.22.3'
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: exact-product/apps/client2/go.mod
+          cache: false
+      - name: Provision pinned software and compile the actual embedded WebUI
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C exact-product rev-parse HEAD)" = "$PRODUCT_SHA"
+          test "$(git -C exact-wails rev-parse HEAD)" = "$WAILS_SHA"
+          export RESPIRE_E2E_EXPORT_WEBUI_DIR="$RUNNER_TEMP/card018-embedded-webui"
+          export RESPIRE_E2E_PRODUCT_SHA="$PRODUCT_SHA"
+          (cd exact-product/apps/client2/internal/desktop
+            GOTOOLCHAIN=local GOPROXY=off go test -mod=readonly -count=1 -run '^TestExportEmbeddedWebUI$' -v \
+              frontend_assets.go frontend_assets_export_test.go)
+          sha256sum "$RESPIRE_E2E_EXPORT_WEBUI_DIR/webui.json"
+          echo '8326f27a4c511e71cf1e64eb8b861fd201b9cf0ca6035bfd65fc4dfd2cb0f25b  exact-wails/v3/internal/assetserver/bundledassets/runtime.js' | sha256sum -c
+          cd test-cases/client2-e2e/compiled-webui/toolchain
+          npm ci --ignore-scripts --no-audit --no-fund
+          node -e 'const b=require("./node_modules/playwright-core/browsers.json").browsers.find(x=>x.name==="chromium");if(b.revision!=="1194"||b.browserVersion!=="141.0.7390.37")process.exit(1)'
+          ./node_modules/.bin/playwright install --with-deps chromium
+      - name: Qualify actual loaded product and stock layout on loopback only
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$PWD/test-cases/client2-e2e/compiled-webui"
+          export NODE_PATH="$root/toolchain/node_modules"
+          export RESPIRE_E2E_WEBUI_BUNDLE="$RUNNER_TEMP/card018-embedded-webui"
+          export RESPIRE_E2E_WEBUI_MANIFEST_SHA="$(sha256sum "$RESPIRE_E2E_WEBUI_BUNDLE/webui.json" | cut -d ' ' -f1)"
+          export RESPIRE_E2E_PRODUCT_SHA="$PRODUCT_SHA"
+          export RESPIRE_E2E_WAILS_RUNTIME="$PWD/exact-wails/v3/internal/assetserver/bundledassets/runtime.js"
+          export RESPIRE_E2E_BROWSER=chromium
+          export RESPIRE_E2E_BROWSER_EXECUTABLE="$(node -p 'require("@playwright/test").chromium.executablePath()')"
+          test -x "$RESPIRE_E2E_BROWSER_EXECUTABLE"
+          for script in quick-panel-layout workspace-layout; do
+            timeout 180s unshare -Urn python3 "$root/loopback-only-exec.py" node "$root/$script.mjs"
+          done
