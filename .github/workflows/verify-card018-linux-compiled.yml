@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 20
     env:
-      PRODUCT_SHA: 20f02cb32d55b3081855651b512bcd9e8a27cf79
+      PRODUCT_SHA: 77e2c20b225e15e88f1ce7bb240bbd186576689d
       WAILS_SHA: 7b11001b92b712210b27d8cb53430e83f67ad8e4
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -30,7 +30,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: risense-ai/respire
-          ref: 20f02cb32d55b3081855651b512bcd9e8a27cf79
+          ref: 77e2c20b225e15e88f1ce7bb240bbd186576689d
           path: exact-product
           persist-credentials: false
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683

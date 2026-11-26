@@ -113,3 +113,78 @@ test("Storage/Settings bootstrap ready Overview then allow only a loaded read-on
   }
   assert.throws(()=>exec(workspaceMock("overview"),"agent_config",{}));
 });
+
+test("Grants and Members use real typed Mock reads and accept no mutations",()=>{
+  const grants=workspaceMock("grants");
+  assert.deepEqual(exec(grants,"grant_list",{}).envelope.details.map(x=>[x.label,x.revoked]),[["Research reader",false]]);
+  assert.throws(()=>exec(grants,"grant_list",{unexpected:true}));
+  assert.throws(()=>exec(grants,"grant_revoke",{id:"not accepted"}));
+  assert.throws(()=>exec(workspaceMock("overview"),"grant_list",{}));
+  const members=workspaceMock("space-members");
+  assert.equal(exec(members,"space_members",{}).envelope.details[0].device_name,"Robin Lee");
+  assert.equal(exec(members,"space_list",{}).envelope.summary.spaces[0].current,true);
+  assert.throws(()=>exec(members,"space_kick",{session:"not accepted"}));
+  assert.throws(()=>exec(workspaceMock("accounts"),"space_members",{}));
+});
+
+test("Injection presents one explicit synthetic host read but no write endpoint",async t=>{
+  const {app,operations}=quickPanelAdapter(new Map(),{locale:"en",surface:"injection",wails:Buffer.alloc(0)});
+  await once(app.listen(0,"127.0.0.1"),"listening");
+  t.after(()=>new Promise(resolve=>app.close(resolve)));
+  const origin="http://127.0.0.1:"+app.address().port;
+  const loaded=await (await fetch(origin+"/api/inject-targets")).json();
+  assert.equal(loaded.result.mode,"readonly");
+  assert.equal(loaded.result.targets[0].name,"CARD018 synthetic agent");
+  assert(operations.has("inject_targets"));
+  assert.equal((await fetch(origin+"/api/inject-set",{method:"POST",headers:{
+    Origin:origin,"X-Respire-Client":"1","Content-Type":"application/json",
+  },body:'{"enable":true}'})).status,404);
+});
+
+test("Stats maps a real synthetic Recall log into a positive local daily row",()=>{
+  const stats=workspaceMock("stats");
+  const {details}=exec(stats,"query_log",{stats:true,limit:1}).envelope;
+  assert.equal(details.total,1);
+  assert.deepEqual(details.daily,[{day:"2026-11-23",recalls:1,hits:1,adopted:0,good:0}]);
+  assert.throws(()=>exec(stats,"query_log",{stats:false,limit:1}));
+});
+
+test("Wizard startup, Organize and Session Import allow only explicit fixture reads",async t=>{
+  const org=workspaceMock("organize");
+  assert.deepEqual(exec(org,"classification_config",{}).envelope.summary,{backend:"jev",has_key:false});
+  assert.throws(()=>exec(org,"classification_save",{key:"not permitted"}));
+  const sessions=workspaceMock("session-import");
+  const {details}=exec(sessions,"session_import_targets",{}).envelope;
+  assert.equal(details[0].installed,true);
+  assert.equal(details[0].roots.length,1);
+  assert.throws(()=>exec(sessions,"session_import_apply",{}));
+  const {app}=quickPanelAdapter(new Map(),{locale:"zh",surface:"wizard",wails:Buffer.alloc(0)});
+  await once(app.listen(0,"127.0.0.1"),"listening");
+  t.after(()=>new Promise(resolve=>app.close(resolve)));
+  const origin="http://127.0.0.1:"+app.address().port;
+  const state=(await (await fetch(origin+"/api/state")).json()).result;
+  assert.deepEqual(state.preferences,{language:"zh",onboardingCompleted:false,onboardingStep:"sync"});
+  const status=(await (await fetch(origin+"/api/runtime-status")).json()).result;
+  assert.equal(status.summary.session.has_token,false);
+  assert.equal((await fetch(origin+"/api/preferences",{method:"POST",headers:{
+    Origin:origin,"X-Respire-Client":"1","Content-Type":"application/json",
+  },body:'{"onboardingCompleted":true}'})).status,404);
+});
+
+test("Models receives only its exact synthetic product-shaped local catalog and loaded engine",async t=>{
+  const {app,operations}=quickPanelAdapter(new Map(),{locale:"en",surface:"models",wails:Buffer.alloc(0)});
+  await once(app.listen(0,"127.0.0.1"),"listening");
+  t.after(()=>new Promise(resolve=>app.close(resolve)));
+  const origin="http://127.0.0.1:"+app.address().port;
+  const get=path=>fetch(origin+path);
+  const {result}=await (await get("/api/model-variants?model=m3")).json();
+  assert.equal(result.model,"m3");
+  assert.deepEqual(result.variants.map(x=>[x.name,x.installed]),[["quantized",true]]);
+  assert(operations.has("model_variants"));
+  assert.equal((await get("/api/model-variants?model=m3&extra=true")).status,400);
+  assert.equal((await get("/api/model-variants?model=unknown")).status,400);
+  assert.equal((await (await get("/api/model-profile-state")).json()).result.catalog.details.active.model,"m3");
+  const model=workspaceMock("models");
+  assert.deepEqual(exec(model,"model_engine",{}).envelope.summary,{engine:"cpu",model:"quantized"});
+  assert.throws(()=>exec(model,"model_switch",{engine:"gpu"}));
+});

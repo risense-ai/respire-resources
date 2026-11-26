@@ -4,7 +4,7 @@ import {createHash} from "node:crypto";
 import {lstat,readFile,readdir,realpath} from "node:fs/promises";
 import {extname,isAbsolute,join,resolve} from "node:path";
 import "../../../prototypes/mock-api/fixture.js";
-import {dataDir,localUser,settingsTheme,workspaceMock} from "./workspace-mock.mjs";
+import {dataDir,injectionTarget,localUser,settingsTheme,workspaceMock} from "./workspace-mock.mjs";
 
 const commit=/^[a-f0-9]{40}$/;
 const sha256=/^[a-f0-9]{64}$/;
@@ -66,6 +66,7 @@ const mime=new Map([[".html","text/html"],[".css","text/css"],[".js","text/javas
 const requestIDs=new Map([
   ["GET /api/state","state"],["GET /api/runtime-status","status"],["GET /api/operations","operations"],
   ["GET /api/inject-targets","inject-targets"],["GET /api/model-profile-state","model-profile"],
+  ["GET /api/model-variants?model=m3","model-variants"],
   ["POST /api/execute","execute"],["POST /api/operation-ack","operation-ack"],
   ["GET /wails/runtime.js","wails-runtime"],["GET /wails/runtime","wails-transport"],
   ["POST /wails/runtime","wails-transport"],["HEAD /wails/custom.js","wails-optional"],
@@ -105,18 +106,26 @@ export function quickPanelAdapter(assets,{locale,failStatus=false,surface="quick
           typeof req.url!=="string"||!req.url.startsWith("/")||req.url.startsWith("//"))
         return deny(req,res,403);
       const url=new URL(req.url,origin);
-      if(url.search||url.pathname!==req.url)return deny(req,res,400);
+      const variants=surface==="models"&&req.method==="GET"&&req.url==="/api/model-variants?model=m3";
+      if(!variants&&(url.search||url.pathname!==req.url))return deny(req,res,400);
+      if(variants){
+        workspace.operations.add("model_variants");
+        return ok(res,workspace.modelInventory);
+      }
       if(req.method==="GET"&&url.pathname==="/api/state"){
         observed.state++;
-        return ok(res,{connected:true,platform:"linux",version:"fixture",preferences:{language:locale,onboardingCompleted:true,...(workspace?.settings&&{theme:settingsTheme})},
-          health:{bin:"synthetic-runtime",inference:{phase:"ready",queued:0}}});
+        return ok(res,{connected:true,platform:"linux",version:"fixture",preferences:{language:locale,onboardingCompleted:surface!=="wizard",
+          ...(surface==="wizard"&&{onboardingStep:"sync"}),...(workspace?.settings&&{theme:settingsTheme})},
+          health:{bin:"synthetic-runtime",...(surface==="models"&&{
+            instance_id:"card018-synthetic-instance",account_id:"card018-synthetic-account",generation:1,
+          }),inference:{phase:"ready",queued:0}}});
       }
       if(req.method==="GET"&&url.pathname==="/api/runtime-status"){
         observed.status++;
         if(failStatus)return response(res,503,{ok:false,error:"Synthetic status deliberately unavailable"});
         return ok(res,{summary:{local_alive:status.memory_count,local_total:status.memory_count,
           unlocked:true,...(workspace&&{data_dir:dataDir}),
-          session:{has_token:true,...(surface==="accounts"&&{user:localUser,has_local_keys:true})},retrieval_index:{state:"ready"},sync_live:{phase:"idle",remote_alive:0,pending:0,conflicts:0}}});
+          session:{has_token:surface!=="wizard",...(workspace?.accounts&&{user:localUser,has_local_keys:true})},retrieval_index:{state:"ready"},sync_live:{phase:"idle",remote_alive:0,pending:0,conflicts:0}}});
       }
       if(workspace){
         if(req.method==="HEAD"&&url.pathname==="/wails/custom.js"){
@@ -126,8 +135,14 @@ export function quickPanelAdapter(assets,{locale,failStatus=false,surface="quick
         if(req.method==="GET"&&url.pathname==="/wails/runtime.js")
           return res.writeHead(200,{"Content-Type":"text/javascript"}).end(wails);
         if(req.method==="GET"&&url.pathname==="/api/operations")return ok(res,[]);
-        if(req.method==="GET"&&url.pathname==="/api/inject-targets"&&workspace.overviewBootstrap)return ok(res,{targets:[]});
-        if(req.method==="GET"&&url.pathname==="/api/model-profile-state"&&workspace.overviewBootstrap)return ok(res,workspace.modelProfile);
+        if(req.method==="GET"&&url.pathname==="/api/inject-targets"){
+          if(workspace.overviewBootstrap)return ok(res,{targets:[]});
+          if(surface==="injection"){
+            workspace.operations.add("inject_targets");
+            return ok(res,{mode:"readonly",targets:[injectionTarget]});
+          }
+        }
+        if(req.method==="GET"&&url.pathname==="/api/model-profile-state"&&(workspace.overviewBootstrap||surface==="models"))return ok(res,workspace.modelProfile);
         if(req.method==="POST"&&["/api/execute","/api/operation-ack"].includes(url.pathname)){
           if(req.headers.origin!==origin||req.headers["x-respire-client"]!=="1"||
               req.headers["content-type"]!=="application/json")return deny(req,res,403);

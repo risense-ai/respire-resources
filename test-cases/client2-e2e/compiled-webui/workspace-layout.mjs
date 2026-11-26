@@ -6,7 +6,7 @@ import {isAbsolute} from "node:path";
 import {createRequestDiagnostics,optionalWailsStartupAbort} from "./request-diagnostics.mjs";
 import {measureLayout,viewports} from "../layout.mjs";
 import {quickPanelAdapter,requestID,verifyWebUIBundle} from "./quick-panel-adapter.mjs";
-import {accountName,agentMode,dataDir,diaryDay,diaryTitle,localUser,mainSpace,marker,needle,settingsTheme,verifyWailsRuntime} from "./workspace-mock.mjs";
+import {accountName,agentMode,dataDir,diaryDay,diaryTitle,grantName,injectionTarget,localUser,mainSpace,memberName,marker,modelWeight,needle,sessionSource,settingsTheme,verifyWailsRuntime} from "./workspace-mock.mjs";
 
 const require=createRequire(import.meta.url);
 assert.equal(require("@playwright/test/package.json").version,"1.56.1");
@@ -18,7 +18,8 @@ const assets=await verifyWebUIBundle(process.env.RESPIRE_E2E_WEBUI_BUNDLE??"",
   process.env.RESPIRE_E2E_PRODUCT_SHA,process.env.RESPIRE_E2E_WEBUI_MANIFEST_SHA);
 const wails=await verifyWailsRuntime(process.env.RESPIRE_E2E_WAILS_RUNTIME);
 const captions=JSON.parse(await readFile(new URL("../../fixtures/i18n/compiled-workspace.json",import.meta.url),"utf8"));
-const surfaces=["overview","workspace","recall","diary","accounts","storage","settings"];
+const {statsMetric:statLabels,organizeState:organizeLabels}=captions;
+const surfaces=["overview","workspace","recall","diary","accounts","storage","settings","grants","space-members","injection","stats","wizard","organize","session-import","models"];
 for(const surface of surfaces)assert(captions[surface]?.en&&captions[surface]?.zh&&captions[surface].en!==captions[surface].zh);
 const errorSelector="#notice.error:not([hidden]),[data-runtime-error]:not([hidden]):not(:empty),.danger-text,.form-error";
 
@@ -35,7 +36,9 @@ async function check(browser,surface,locale){
     const classifyFailedRequest=createRequestDiagnostics(origin,assets);
     const memory=["workspace","recall"].includes(surface);
     const settings=["storage","settings"].includes(surface);
-    const route=settings?"overview":memory?"memories":surface;
+    const members=surface==="space-members";
+    const overview=settings||surface==="stats"||surface==="wizard";
+    const route=overview?"overview":memory?"memories":members?"accounts":surface;
     await context.route("**/*",async request=>{
       if(new URL(request.request().url()).origin!==origin){
         record("external-origin");
@@ -43,7 +46,7 @@ async function check(browser,surface,locale){
       }else await request.continue();
     });
     const page=await context.newPage();
-    if(surface==="diary")await page.clock.setFixedTime(new Date(diaryDay+"T12:00:00Z"));
+    if(["diary","stats"].includes(surface))await page.clock.setFixedTime(new Date(diaryDay+"T12:00:00Z"));
     page.on("pageerror",()=>record("page-exception"));
     page.on("console",message=>{
       if(message.type()!=="error")return;
@@ -76,9 +79,26 @@ async function check(browser,surface,locale){
       await page.locator('nav [data-page="settings"]').click();
       assert.equal(page.url(),origin+"/workspace.html#settings");
     }
+    const dialog=page.locator("dialog[open]");
+    const wizard=page.locator("#onboarding:not([hidden])");
+    const stats=view.locator("[data-overview-stats]");
+    if(members){
+      const current=view.locator("[data-spaces] .row strong").filter({hasText:mainSpace});
+      await current.waitFor({state:"visible",timeout:5000});
+      assert.equal(await current.count(),1);
+      await view.locator('button[data-space="members"]').click();
+      await dialog.waitFor({state:"visible",timeout:5000});
+      assert.equal(await dialog.count(),1);
+    }
     const storage=view.locator('section:has(input[name="dir"])');
-    const title=surface==="storage"?storage.locator("h2"):
+    const title=surface==="storage"?storage.locator("h2"):members?dialog.locator(".dialog-heading h2"):
+      surface==="wizard"?wizard.locator(".wizard-body h1"):
+      surface==="stats"?stats.locator(".page-heading h2"):
       view.locator(surface==="settings"?".page-heading h1":"h1");
+    if(surface==="models"){
+      await view.locator("[data-advanced-open] button").click();
+      await view.locator("[data-advanced-panel]:not([hidden])").waitFor({state:"visible",timeout:5000});
+    }
     const item=view.locator(".memory-title[data-select]").filter({hasText:marker});
     if(surface==="recall"){
       await item.waitFor({state:"visible",timeout:5000});
@@ -132,6 +152,56 @@ async function check(browser,surface,locale){
           assert.equal(await value.innerText(),expected);
         }
         assert(operations.has("account_list")&&operations.has("space_list"),"Missing actual Account and Space reads");
+      }else if(surface==="stats"){
+        const metric=stats.locator("[data-body] .metrics .metric").first();
+        await metric.waitFor({state:"visible",timeout:5000});
+        assert.equal(await metric.locator("span").innerText(),statLabels[locale]);
+        assert.equal(await metric.locator("strong").innerText(),"1");
+        const row=stats.locator("[data-body] table tbody tr");
+        await row.waitFor({state:"visible",timeout:5000});
+        assert.deepEqual(await row.locator("td").allTextContents(),[diaryDay,"1","1","0","0"]);
+        assert(operations.has("query_log"),"Missing actual scoped Stats load");
+      }else if(surface==="wizard"){
+        await wizard.locator('.wizard-step[aria-current="step"]').waitFor({state:"visible",timeout:5000});
+        assert.equal(await wizard.locator("button[data-choice]").count(),2);
+        assert.equal(await wizard.locator("button[data-next-sync]").isEnabled(),false);
+        assert(observed.state>=1&&observed.status>=1,"Wizard must begin after the actual startup reads");
+      }else if(surface==="organize"){
+        const provider=view.locator('select[name="backend"]');
+        await page.waitForFunction(()=>document.querySelector('select[name="backend"]')?.value==="jev",null,{timeout:5000});
+        assert.equal(await provider.inputValue(),"jev");
+        assert.equal((await view.locator("[data-provider-state]").innerText()).trim(),organizeLabels[locale]);
+        assert(operations.has("classification_config"),"Missing actual Organize provider load");
+      }else if(surface==="models"){
+        const active=view.locator('[data-variants] button.active[data-engine="cpu"][data-variant="quantized"]');
+        await active.waitFor({state:"visible",timeout:5000});
+        assert.equal(await active.count(),1);
+        const row=view.locator("[data-variants] tbody tr");
+        assert.equal(await row.count(),1);
+        assert.equal(await row.locator(".path-cell code").innerText(),modelWeight);
+        assert.equal(await view.locator('[data-recall] select[name="mode"]').inputValue(),"quality");
+        for(const read of ["agent_config","model_engine","classification_config","model_variants"])
+          assert(operations.has(read),"Missing actual model configuration read");
+      }else if(surface==="session-import"){
+        const source=view.locator("[data-sources] .si-source").filter({hasText:sessionSource.name});
+        await source.waitFor({state:"visible",timeout:5000});
+        assert.equal(await source.count(),1);
+        assert.equal(await source.locator("strong").innerText(),sessionSource.name);
+        assert.equal(await source.locator('input[data-source="codex"]').isChecked(),true);
+        assert.equal(await view.locator("[data-apply]").isEnabled(),false);
+        assert(operations.has("session_import_targets"),"Missing actual Session Import discovery");
+      }else if(surface==="grants"||members||surface==="injection"){
+        const [locator,text,read]=surface==="grants"
+          ? [view.locator("[data-grants] .row strong"),grantName,"grant_list"]
+          : members
+            ? [dialog.locator("[data-members] .row strong"),memberName,"space_members"]
+            : [view.locator("[data-agents] .ag-name strong"),injectionTarget.name,"inject_targets"];
+        const witness=locator.filter({hasText:text});
+        await witness.waitFor({state:"visible",timeout:5000});
+        assert.equal(await witness.count(),1);
+        assert.equal(await witness.innerText(),text);
+        assert(operations.has(read),"Missing actual positive surface load");
+        if(surface==="injection")assert.equal(await view.locator("[data-mode]").inputValue(),"readonly");
       }else if(settings){
         const data=storage.locator('input[name="dir"]');
         await data.waitFor({state:"visible",timeout:5000});
@@ -149,6 +219,28 @@ async function check(browser,surface,locale){
       await page.evaluate(()=>document.fonts.ready.then(()=>{}));
       const stock=await page.evaluate(measureLayout);
       assert.deepEqual(stock.issues,[],"Stock layout issues");
+      if(members||surface==="wizard"){
+        const outside=members?dialog:wizard;
+        const issues=await outside.evaluate(element=>{
+          const issues=[], width=document.documentElement.clientWidth;
+          if(element.scrollWidth>element.clientWidth+1)issues.push("dialog has horizontal overflow");
+          for(const control of element.querySelectorAll("button, input, select, textarea")){
+            if(!control.getClientRects().length)continue;
+            const box=control.getBoundingClientRect();
+            if(box.left< -1||box.right>width+1||box.width<=0||box.height<=0)issues.push("dialog control bounds");
+            if(control.matches("button")&&(control.scrollWidth>control.clientWidth+1||
+                control.scrollHeight>control.clientHeight+1))issues.push("dialog control clipping");
+            const icon=control.querySelector("svg,[data-layout-icon]");
+            if(icon){
+              const mark=icon.getBoundingClientRect();
+              if(Math.abs((mark.top+mark.bottom-box.top-box.bottom)/2)>2)issues.push("dialog icon alignment");
+            }
+          }
+          if(element.querySelector(".form-error:not([hidden]):not(:empty)"))issues.push("dialog error");
+          return issues;
+        });
+        assert.deepEqual(issues,[]);
+      }
       if(fontSize!==undefined)assert(stock.fontSize<fontSize,"Expected fluid root rem scaling");
       fontSize=stock.fontSize;
       checkpoint="app-errors";

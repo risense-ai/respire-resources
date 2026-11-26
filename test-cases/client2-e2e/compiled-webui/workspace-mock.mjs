@@ -26,12 +26,22 @@ export const localUser="card018-fictitious-user";
 export const mainSpace="Studio notebook";
 export const agentMode={workspace_mode:"readonly",diary_mode:"verbose"};
 export const settingsTheme="dark";
+export const modelDir="/synthetic-card018/models/m3";
+export const modelWeight=modelDir+"/model_quantized.onnx";
+export const grantName="Research reader";
+export const memberName="Robin Lee";
+export const sessionSource={id:"codex",name:"CARD018 synthetic session source",
+  installed:true,roots:["/synthetic-card018/sessions"]};
+export const injectionTarget={id:"card018-synthetic",name:"CARD018 synthetic agent",
+  path:"/synthetic-card018/agent/instructions.md",mode:"inject",state:"fresh",likelyInstalled:true};
 
 export function workspaceMock(surface){
-  assert(["overview","workspace","recall","diary","accounts","storage","settings"].includes(surface));
+  assert(["overview","workspace","recall","diary","accounts","storage","settings","grants","space-members","injection","stats","wizard","organize","session-import","models"].includes(surface));
   const memory=["workspace","recall"].includes(surface);
   const settings=["storage","settings"].includes(surface);
-  const overviewBootstrap=surface==="overview"||settings;
+  const accounts=["accounts","space-members"].includes(surface);
+  const models=surface==="models";
+  const overviewBootstrap=["overview","stats","wizard"].includes(surface)||settings;
   const fixture=globalThis.RespireFixture.create(memory?"empty":"rich-1k");
   const call=(method,path,body,headers)=>fixture.request(method,path,body,headers).data;
   if(memory){
@@ -39,12 +49,13 @@ export function workspaceMock(surface){
     call("POST","/v1/memories",{title:marker,content:needle});
   }
   if(surface==="diary")call("POST","/v1/diary",{date:diaryDay,content:diaryTitle});
+  if(surface==="stats")call("POST","/v1/memories/recall",{query:"observations",top_k:1});
   const health=call("GET","/v1/health");
   const status=call("GET","/v1/status/light");
   assert.equal(health.status,"ready");
   assert(status.memory_count>0);
   const {challenge}=call("POST","/preview/owner-challenge");
-  const lease=call("POST","/v1/auth/handshake",{scopes:["query-log:read"]},
+  const lease=call("POST","/v1/auth/handshake",{scopes:surface==="grants"?["grants:read"]:["query-log:read"]},
     {"x-respire-handshake-proof":"synthetic-owner-proof-"+challenge});
   const matches=(value,expected)=>{
     assert.deepEqual(Object.keys(value).sort(),Object.keys(expected).sort());
@@ -75,12 +86,20 @@ export function workspaceMock(surface){
         matches(args,{top:50});
         envelope={details:{suggests:call("GET","/v1/organize/suggestions?top=50").suggestions}};
         break;
-      case "query_log":
+      case "query_log": {
         assert(overviewBootstrap);
         matches(args,{stats:true,limit:1});
-        envelope={details:call("GET","/v1/query-log?limit=1",{},
-          {authorization:"Bearer "+lease.access_token}).stats};
+        const data=call("GET","/v1/query-log?limit=1",{}, {authorization:"Bearer "+lease.access_token});
+        if(surface==="stats"){
+          assert.equal(data.items.length,1);
+          const [item]=data.items;
+          const day=item.recorded_at.slice(0,10);
+          assert.equal(day,diaryDay);
+          envelope={details:{...data.stats,daily:[{day,recalls:1,hits:Number(item.candidate_count>0),
+            adopted:item.adopted_count,good:item.good_count}]}};
+        }else envelope={details:data.stats};
         break;
+      }
       case "capabilities":
         assert(memory);
         matches(args,{});
@@ -99,23 +118,55 @@ export function workspaceMock(surface){
         assert.deepEqual(envelope.details.map(item=>item.title),[marker]);
         break;
       case "account_list":
-        assert(surface==="accounts");
+        assert(accounts);
         matches(args,{});
         // Accounts are desktop host profiles, not Runtime libraries.
         envelope={summary:{accounts:[{name:accountName,user:localUser,dir:dataDir,current:true}]}};
         break;
       case "space_list": {
-        assert(surface==="accounts");
+        assert(accounts);
         matches(args,{});
         const {spaces}=call("GET","/v1/spaces");
         assert(spaces.some(item=>item.name===mainSpace&&item.active));
         envelope={summary:{spaces:spaces.map(({name,role,active})=>({name,role,current:active}))}};
         break;
       }
-      case "agent_config":
-        assert(settings);
+      case "grant_list": {
+        assert(surface==="grants");
         matches(args,{});
-        envelope={summary:{...agentMode}};
+        const {items}=call("GET","/v1/grants",{}, {authorization:"Bearer "+lease.access_token});
+        assert(items.some(item=>item.label===grantName&&!item.revoked));
+        envelope={details:items};
+        break;
+      }
+      case "space_members": {
+        assert(surface==="space-members");
+        matches(args,{});
+        const {members}=call("GET","/v1/spaces/"+health.active_space_id+"/members");
+        assert(members.some(item=>item.display_name===memberName&&item.status==="active"));
+        envelope={details:members.map(item=>({session_id:item.member_id,device_name:item.display_name,
+          readonly:item.role==="viewer"}))};
+        break;
+      }
+      case "classification_config":
+        assert(surface==="organize"||models);
+        matches(args,models?{backend:"ds"}:{});
+        envelope={summary:{backend:models?"ds":"jev",has_key:false}};
+        break;
+      case "session_import_targets":
+        assert(surface==="session-import");
+        matches(args,{});
+        envelope={details:[sessionSource]};
+        break;
+      case "agent_config":
+        assert(settings||models);
+        matches(args,{});
+        envelope={summary:models?{recall_mode:"quality"}:{...agentMode}};
+        break;
+      case "model_engine":
+        assert(models);
+        matches(args,{});
+        envelope={summary:{engine:"cpu",model:"quantized"}};
         break;
       default:assert.fail("Unexpected read operation");
     }
@@ -133,7 +184,10 @@ export function workspaceMock(surface){
     return "Acknowledged";
   }
   const receipts=()=>({issued,acknowledged,pending:pending.size});
-  return {status,operations,execute,acknowledge,receipts,overviewBootstrap,settings,modelProfile:{catalog:{details:{active:{
-    model:catalog.active_model_id,variant:"quantized",engine:"cpu",
+  return {status,operations,execute,acknowledge,receipts,overviewBootstrap,settings,accounts,
+    modelInventory:{model:"m3",model_dir:modelDir,tokenizer_installed:true,cpu_container_ready:true,
+      variants:[{name:"quantized",size:1024,path:modelWeight,bytes:1024,installed:true}]},
+    modelProfile:{catalog:{details:{active:{
+    model:models?"m3":catalog.active_model_id,variant:"quantized",engine:"cpu",
   }}}}};
 }
