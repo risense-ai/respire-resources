@@ -8,7 +8,7 @@ Detailed role playbooks live under `process/roles/`. Human Maintainer controls O
 
 ## 2. Deterministic CLI `respire-process.mjs` Specification
 
-Modeled on `sebas-process`, exit codes are strict and Fail-Closed:
+The CLI uses strict, fail-closed exit codes:
 - `0` — Success / READY card selected;
 - `1` — Invalid arguments, missing metadata, or verification failure (Fail-Closed);
 - `2` — `blocked` or `needs:human` (awaiting Maintainer approval, manual action, or upstream dependencies).
