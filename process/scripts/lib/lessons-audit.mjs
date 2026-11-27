@@ -2,6 +2,8 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 
+export const FIX_OR_REVERT = /^(?:fix(?:\([^)]+\))?!?:|revert(?:\([^)]+\))?!?:|Revert ")/i;
+
 export function auditLessons(cwd, ledgerPath, previous, current) {
   if (![previous, current].every((sha) => /^[0-9a-f]{40}$/i.test(sha || ""))) {
     throw new Error("Expected two full commit SHAs for the audit range");
@@ -20,7 +22,7 @@ export function auditLessons(cwd, ledgerPath, previous, current) {
   const occurrences = new Map();
   for (const sha of commits) {
     const subject = git("show", "-s", "--format=%s", sha);
-    if (!/^(?:fix(?:\([^)]+\))?!?:|revert(?:\([^)]+\))?!?:|Revert ")/i.test(subject)) continue;
+    if (!FIX_OR_REVERT.test(subject)) continue;
     const ids = new Set(git("show", "-s", "--format=%(trailers:key=Lesson,valueonly)", sha)
       .split("\n").map((id) => id.trim()).filter((id) => lessons.has(id)));
     const paths = git("diff", "--name-only", sha + "^1", sha, "--", "LESSONS.md");

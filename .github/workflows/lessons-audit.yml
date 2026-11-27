@@ -3,9 +3,20 @@ name: Nightly lessons audit
 on:
   schedule:
     - cron: "23 3 * * *"
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: File missing guardrail issues
+        type: boolean
+        default: false
 
 permissions:
   contents: read
+  issues: write
+
+concurrency:
+  group: lessons-audit
+  cancel-in-progress: false
 
 jobs:
   report:
@@ -15,26 +26,37 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          ref: ${{ github.sha }}
-          path: resources
+          ref: refs/heads/main
+          path: respire-resources
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           repository: risense-ai/respire
           ref: refs/heads/main
-          path: product
+          path: respire
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22.16.0'
-      - name: Generate review drafts
-        run: node resources/process/scripts/nightly-lessons.mjs resources product > lessons-report.json
+      - name: Audit merged repairs and reverts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AUDIT_MODE: ${{ (github.event_name == 'schedule' || inputs.apply) && '--apply' || '--dry-run' }}
+        run: |
+          node respire-resources/process/scripts/lessons-audit.mjs \
+            --repos respire-resources,respire \
+            --lessons-file respire-resources/LESSONS.md \
+            "$AUDIT_MODE" \
+            --output-json lessons-report.json \
+            --output-md lessons-report.md
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: ${{ !cancelled() }}
         with:
           name: lessons-report
-          path: lessons-report.json
+          path: |
+            lessons-report.json
+            lessons-report.md
           if-no-files-found: error
-          overwrite: true
           retention-days: 14
