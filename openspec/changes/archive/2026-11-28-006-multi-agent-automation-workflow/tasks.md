@@ -3,7 +3,7 @@
 ## Phase 1: Role Playbooks & Trusted Allowlist
 
 - [x] **T06-01** Create six-role definitions and one-line dispatch prompts under `process/roles/`
-- [x] **T06-02** Create `.github/agents.yml` (`maintainers` + `trusted_bots`) and sync English-only `coderabbit.yaml` to `risense-ai/respire` (`respire-core` tracked via `CARD-002`)
+- [x] **T06-02** Create `.github/agents.yml` (`maintainers` + `trusted_bots`) and sync English-only review settings to `risense-ai/respire` (`respire-core` tracked via `CARD-002`)
 
 ## Phase 2: Full `respire-process.mjs` & Trusted Bot Evidence *(Promoted & Landed in M1)*
 
@@ -13,9 +13,9 @@
 
 ## Phase 3: Nightly Lessons Audit & End-to-End Dry Run
 
-- [ ] **T06-06** Implement periodic `lessons-audit` script/workflow scanning merged `fix:` commits for `LESSONS.md` updates and 3-strike `guardrail` Issues (`CARD-020`)
-- [ ] **T06-07** Execute one complete end-to-end feature cycle through Triager -> Maintainer Approve -> Implementer -> Read-Only Verifier + UI Preview -> Merge -> Bot Evidence -> Scribe Archive (`CARD-020`)
-- [ ] **T06-08** Archive `specs/agent-workflow/spec.md` into `openspec/specs/`
+- [x] **T06-06** Implement periodic `lessons-audit` script/workflow scanning merged `fix:` commits for `LESSONS.md` updates and 3-strike `guardrail` Issues ([CARD-020 audit evidence](https://github.com/risense-ai/respire-resources/issues/7#issuecomment-7223580272))
+- [x] **T06-07** Execute one complete end-to-end feature cycle through Triager -> Maintainer Approve -> Implementer -> Read-Only Verifier + UI Preview -> Merge -> Bot Evidence -> Scribe Archive ([CARD-021 evidence](evidence/card-021.md))
+- [x] **T06-08** Promote the delta to the [canonical agent workflow spec](../../../specs/agent-workflow/spec.md)
 
 ## Verification Commands
 

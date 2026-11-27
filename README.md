@@ -36,7 +36,7 @@ All documentation, specifications, source code, comments, scripts, workflows, co
   3. [003-monorepo-merge-and-release-bridge](openspec/changes/003-monorepo-merge-and-release-bridge/proposal.md) — Open-source `apps/core` + `runtime`/`cli`/`client2` monorepo merge, path-filtered CI, and legacy Release Fan-Out
   4. [004-ci-guardrails-and-code-slimming](openspec/changes/archive/2026-11-27-004-ci-guardrails-and-code-slimming/proposal.md) — Anti-regression CI guardrails and 60%+ redundancy elimination across all 4 components
   5. [005-prototypes-and-e2e-acceptance](openspec/changes/archive/2026-11-27-005-prototypes-and-e2e-acceptance/proposal.md) — 16 HTML prototypes, black-box E2E suite (with Windows checks), and Client2 PR UI Preview
-  6. [006-multi-agent-automation-workflow](openspec/changes/006-multi-agent-automation-workflow/proposal.md) — Six-role Maker-Checker workflow, `respire-process` CLI, Bot Evidence, and `LESSONS.md` audits
+  6. [006-multi-agent-automation-workflow](openspec/changes/archive/2026-11-28-006-multi-agent-automation-workflow/proposal.md) — Six-role Maker-Checker workflow, `respire-process` CLI, Bot Evidence, and `LESSONS.md` audits
 - **[contracts/](contracts/README.md)** — Canonical API & ABI contracts ([OpenAPI 3.1](contracts/runtime-api/openapi.yaml), [OpenAPI Migration Playbook](contracts/OPENAPI_MIGRATION_PLAYBOOK.md), [Core ABI](contracts/core-abi/README.md))
 - **[prototypes/](prototypes/README.md)** — High-fidelity HTML prototypes, [PR UI Preview Spec](prototypes/UI_PREVIEW_SPEC.md), tokens, and Mock Runtime
 - **[test-cases/](test-cases/README.md)** — Black-box E2E scenarios & [E2E Acceptance Architecture](test-cases/DESIGN.md)

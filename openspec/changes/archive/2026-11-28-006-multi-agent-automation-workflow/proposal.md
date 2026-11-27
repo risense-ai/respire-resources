@@ -1,7 +1,7 @@
 # Proposal: 006-multi-agent-automation-workflow
 
 - **Change ID**: `006-multi-agent-automation-workflow`
-- **Status**: `proposed`
+- **Status**: `archived`
 - **Depends On**: `004-ci-guardrails-and-code-slimming`, `005-prototypes-and-e2e-acceptance`
 
 ## 1. Why
@@ -12,7 +12,7 @@ Even with OpenSpec contracts and E2E suites in place, running ad-hoc single-sess
 2. **Task & dependency collisions**: Multiple Agents working concurrently guess which Issues are unblocked or collide inside clean clones.
 3. **Repeat regressions**: Fixed bugs recur when root causes stay buried in chat history instead of becoming automated CI tests.
 
-Adapting `ShiningRay/sebas`'s **Maker-Checker role isolation + deterministic CLI loop** and `yetone/magpie`'s **nightly `LESSONS.md` graduation loop**, this Change institutionalizes autonomous, auditable AI engineering.
+This Change combines Maker-Checker role isolation, a deterministic CLI, and nightly `LESSONS.md` audits to make the workflow auditable.
 
 ## 2. Goals
 

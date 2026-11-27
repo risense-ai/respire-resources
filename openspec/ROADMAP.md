@@ -29,7 +29,7 @@ flowchart LR
 | [003-monorepo-merge-and-release-bridge](changes/003-monorepo-merge-and-release-bridge/proposal.md) | `M3` | Import open-source `core`, `runtime`, filtered `cli`, `client2` into `risense-ai/respire`; path CI + Release Fan-Out | `approved` (`T03-01` done; `CARD-006`–`CARD-008` ready) |
 | [004-ci-guardrails-and-code-slimming](changes/archive/2026-11-27-004-ci-guardrails-and-code-slimming/proposal.md) | `M4` | Hard CI guardrails (deps, Zero-CJK, 600-line ratchet, route parity) + 4-app slimming | `archived`; see the [canonical architecture guardrails spec](specs/architecture-guardrails/spec.md) |
 | [005-prototypes-and-e2e-acceptance](changes/archive/2026-11-27-005-prototypes-and-e2e-acceptance/proposal.md) | `M5` | 16 HTML prototypes, Mock API, Windows & cross-app E2E suite, Playwright PR UI Preview | `archived`; see the [canonical prototypes and E2E spec](specs/prototypes-and-e2e/spec.md) |
-| [006-multi-agent-automation-workflow](changes/006-multi-agent-automation-workflow/proposal.md) | `M6` | Six-role separation, `respire-process` CLI, Bot Evidence registration, nightly `LESSONS.md` audits | `approved` (`T06-01`–`T06-05` promoted & done in `M1`) |
+| [006-multi-agent-automation-workflow](changes/archive/2026-11-28-006-multi-agent-automation-workflow/proposal.md) | `M6` | Six-role separation, `respire-process` CLI, Bot Evidence registration, nightly `LESSONS.md` audits | `archived`; see the [canonical agent workflow spec](specs/agent-workflow/spec.md) |
 
 ---
 
@@ -56,7 +56,7 @@ flowchart LR
 | `CARD-017` | `M5` | [respire-resources#5](https://github.com/risense-ai/respire-resources/issues/5) | `respire-resources` | `respire-resources#3` | Build 16 HTML prototypes, shared `rem` tokens & Mock Runtime server |
 | `CARD-018` | `M5` | [respire-resources#6](https://github.com/risense-ai/respire-resources/issues/6) | `respire-resources` | `respire-resources#5` | Build black-box E2E suite (Windows 100KB+ UTF-8 & Playwright `en`/`zh` tests) |
 | `CARD-019` | `M5` | [respire#13](https://github.com/risense-ai/respire/issues/13) | `respire` | `respire#5`, `respire-resources#6` | Deploy cross-platform `e2e.yml` & Client2 PR automated Playwright UI Preview |
-| `CARD-020` | `M6` | [respire-resources#7](https://github.com/risense-ai/respire-resources/issues/7) | `respire-resources` | `respire#9,#13` | Add `respire-process` tests, `evidence-register.yml` & nightly `LESSONS.md` audits |
+| `CARD-020` | `M6` | [respire-resources#7](https://github.com/risense-ai/respire-resources/issues/7) | `respire-resources` | `respire#9,#13` | Add `respire-process` tests, `evidence-register.yml` & nightly `LESSONS.md` audits (`DONE`) |
 
 ---
 
