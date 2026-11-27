@@ -534,7 +534,7 @@ This native evidence does not replace the separate 32 compiled WebUI layouts.
 
 ## CARD-018 acceptance evidence
 
-This record preserves the evidence reviewed for CARD-018 and separates follow-up checks that have not passed. The [task list](../openspec/changes/005-prototypes-and-e2e-acceptance/tasks.md), [frozen design](DESIGN.md), [SQLite and legacy transport addendum](https://github.com/risense-ai/respire-resources/issues/6#issuecomment-7113520462), and [Vault and feature parity addendum](https://github.com/risense-ai/respire-resources/issues/6#issuecomment-7113638815) define the unchanged acceptance criteria.
+This record preserves the evidence reviewed for CARD-018 and separates follow-up checks that have not passed. The [archived task list](../openspec/changes/archive/2026-11-27-005-prototypes-and-e2e-acceptance/tasks.md), [frozen design](DESIGN.md), [SQLite and legacy transport addendum](https://github.com/risense-ai/respire-resources/issues/6#issuecomment-7113520462), and [Vault and feature parity addendum](https://github.com/risense-ai/respire-resources/issues/6#issuecomment-7113638815) define the unchanged acceptance criteria.
 
 | Task and scenario | Executed evidence | Coverage and follow-up |
 | --- | --- | --- |
@@ -560,7 +560,7 @@ The Change 005 Windows large-payload scenario maps to
 partially covered by the [smoke suite](cli-e2e/smoke.mjs). The prototype review
 and automated PR preview scenarios belong to CARD-017 and CARD-019.
 
-### Windows native Codex injection
+### Windows native IDE injection
 
 `node test-cases/cli-e2e/verify-inject-win.mjs <owned-temp-dir>
 <absolute-cli-exe> <lowercase-cli-sha256>` uses the compiled CLI in an isolated
@@ -582,4 +582,4 @@ not an interactive write or general TUI/IDE parity check.
 | Vault and credential discovery | [Compiled unlock](fixtures/crypto/README.md) covers eight version/domain combinations, unmarked and marked ciphertext, wrong-factor refusal and expected plaintext. | Historical PBKDF2-SHA256 100k login-hash compatibility, OS keyring service `rsrs` with historical account aliases, and discovery from both legacy default and named account directories lack matched native receipts here. |
 | Legacy RPC and CLI | [Frozen E2E-007 job](https://github.com/risense-ai/respire-resources/actions/runs/45765454095/job/139726114390) exercised runtime.status, model.catalog and read-only cli.exec. [CLI inventory](cli-e2e/LEGACY-HELP-INVENTORY.md) records 84 names and 25 help topics. | Successful legacy RPC model.switch with the expected envelope and state change, and behavioral coverage of the remaining legacy flags and JSON outputs. |
 | MCP stdio | [Compiled Windows receipt](cli-e2e/WINDOWS-TRANSPORT-RECEIPT.md) covers scoped remember, recall and show, exact bilingual payloads and stored ID. | Remaining public tools and their result/error contracts need a tool-by-tool evidence mapping. |
-| TUI, IDE and Client2 parity | [Linux Claude Code terminal and injection job](https://github.com/risense-ai/respire-resources/actions/runs/45758909482/job/139703990568), Windows Codex injection above, [16 bilingual layouts](https://github.com/risense-ai/respire-resources/actions/runs/45751112648) and [seven native screens](https://github.com/risense-ai/respire-resources/actions/runs/45740798117). | Remaining TUI actions and IDE adapters, and feature-by-feature functional receipts across all 16 screens. Layout or help enumeration alone cannot establish functional parity. |
+| TUI, IDE and Client2 parity | [Linux terminal and injection job](https://github.com/risense-ai/respire-resources/actions/runs/45758909482/job/139703990568), Windows native IDE injection above, [16 bilingual layouts](https://github.com/risense-ai/respire-resources/actions/runs/45751112648) and [seven native screens](https://github.com/risense-ai/respire-resources/actions/runs/45740798117). | Remaining TUI actions and IDE adapters, and feature-by-feature functional receipts across all 16 screens. Layout or help enumeration alone cannot establish functional parity. |
