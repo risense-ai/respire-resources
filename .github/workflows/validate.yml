@@ -37,6 +37,9 @@ jobs:
       - name: Run respire-process unit suite
         run: node --test process/scripts/respire-process.test.mjs
 
+      - name: Run lessons audit unit suite
+        run: node --test process/scripts/lessons-audit.test.mjs
+
       - name: Check Runtime API compatibility and golden fixtures
         shell: bash
         env:
