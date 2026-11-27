@@ -2,7 +2,7 @@
 
 These fixtures use synthetic inputs only. No user library, real account,
 machine credential store, or production key is required. The governing
-[Change 005 spec](../../openspec/changes/005-prototypes-and-e2e-acceptance/specs/prototypes-and-e2e/spec.md)
+[Canonical prototypes and E2E spec](../../openspec/specs/prototypes-and-e2e/spec.md)
 includes more than fixture and codec validation.
 
 ## Released SQLite 1.x

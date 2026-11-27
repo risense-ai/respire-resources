@@ -1,7 +1,7 @@
 # Proposal: 005-prototypes-and-e2e-acceptance
 
 - **Change ID**: `005-prototypes-and-e2e-acceptance`
-- **Status**: `proposed`
+- **Status**: `archived`
 - **Depends On**: `002-runtime-openapi-v1-migration`, `003-monorepo-merge-and-release-bridge`
 
 ## 1. Why
@@ -15,7 +15,7 @@ Unit tests alone cannot guard Respire's cross-component UX or system contracts:
 
 1. Build a 16-screen interactive high-fidelity HTML prototype gallery (`prototypes/pages/`), shared fluid `rem` tokens (`prototypes/tokens/`), and deterministic Mock Runtime (`prototypes/mock-api/`).
 2. Build a language-agnostic black-box E2E test suite (`test-cases/`) covering Runtime, CLI, Client2, plugins, and mandatory Windows regression checks.
-3. Implement `yetone/magpie`-style **PR UI Preview** (`ui-preview.yml`) on `risense-ai/respire`: automatically boot Mock Runtime + Playwright, capture `en`/`zh` screenshots and MP4 clips, and post them into the PR body.
+3. Implement **PR UI Preview** (`ui-preview.yml`) on `risense-ai/respire`: automatically boot Mock Runtime + Playwright, capture `en`/`zh` screenshots and MP4 clips, and post them into the PR body.
 
 ## 3. Non-Goals
 

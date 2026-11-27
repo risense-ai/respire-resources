@@ -1,7 +1,7 @@
 # Proposal: 002-runtime-openapi-v1-migration
 
 - **Change ID**: `002-runtime-openapi-v1-migration`
-- **Status**: `proposed`
+- **Status**: `archived`
 - **Depends On**: `001-resources-openspec-foundation`
 
 ## 1. Why

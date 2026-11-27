@@ -1,7 +1,7 @@
 # Proposal: 004-ci-guardrails-and-code-slimming
 
 - **Change ID**: `004-ci-guardrails-and-code-slimming`
-- **Status**: `proposed`
+- **Status**: `archived`
 - **Depends On**: `003-monorepo-merge-and-release-bridge`
 
 ## 1. Why

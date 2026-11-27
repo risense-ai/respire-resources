@@ -25,10 +25,10 @@ flowchart LR
 | Change | Milestone | Core Objective | Status |
 | --- | --- | --- | --- |
 | [001-resources-openspec-foundation](changes/archive/2026-11-23-001-resources-openspec-foundation/proposal.md) | `M1` | SSOT repo, Zero-CJK English-only gate, Milestones/Labels, branch protection, Project #1 sync | `archived`; see the [canonical governance spec](specs/governance/spec.md) |
-| [002-runtime-openapi-v1-migration](changes/002-runtime-openapi-v1-migration/proposal.md) | `M2` | Full V1 `openapi.yaml` (REST+SSE), Rust/Go/TS SDKs, legacy JSON-RPC shim, Windows plugin migration | `approved` (`CARD-003` ready) |
+| [002-runtime-openapi-v1-migration](changes/archive/2026-11-27-002-runtime-openapi-v1-migration/proposal.md) | `M2` | Full V1 `openapi.yaml` (REST+SSE), Rust/Go/TS SDKs, legacy JSON-RPC shim, Windows plugin migration | `archived`; see the [canonical Runtime API spec](specs/runtime-api/spec.md) |
 | [003-monorepo-merge-and-release-bridge](changes/003-monorepo-merge-and-release-bridge/proposal.md) | `M3` | Import open-source `core`, `runtime`, filtered `cli`, `client2` into `risense-ai/respire`; path CI + Release Fan-Out | `approved` (`T03-01` done; `CARD-006`–`CARD-008` ready) |
-| [004-ci-guardrails-and-code-slimming](changes/004-ci-guardrails-and-code-slimming/proposal.md) | `M4` | Hard CI guardrails (deps, Zero-CJK, 600-line ratchet, route parity) + 4-app slimming | `approved` |
-| [005-prototypes-and-e2e-acceptance](changes/005-prototypes-and-e2e-acceptance/proposal.md) | `M5` | 16 HTML prototypes, Mock API, Windows & cross-app E2E suite, Playwright PR UI Preview | `approved` |
+| [004-ci-guardrails-and-code-slimming](changes/archive/2026-11-27-004-ci-guardrails-and-code-slimming/proposal.md) | `M4` | Hard CI guardrails (deps, Zero-CJK, 600-line ratchet, route parity) + 4-app slimming | `archived`; see the [canonical architecture guardrails spec](specs/architecture-guardrails/spec.md) |
+| [005-prototypes-and-e2e-acceptance](changes/archive/2026-11-27-005-prototypes-and-e2e-acceptance/proposal.md) | `M5` | 16 HTML prototypes, Mock API, Windows & cross-app E2E suite, Playwright PR UI Preview | `archived`; see the [canonical prototypes and E2E spec](specs/prototypes-and-e2e/spec.md) |
 | [006-multi-agent-automation-workflow](changes/006-multi-agent-automation-workflow/proposal.md) | `M6` | Six-role separation, `respire-process` CLI, Bot Evidence registration, nightly `LESSONS.md` audits | `approved` (`T06-01`–`T06-05` promoted & done in `M1`) |
 
 ---
